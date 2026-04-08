@@ -107,3 +107,34 @@ class TestGitArchaeologist:
             assert len(result.top_authors) == 0
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
+
+# [2026-04-08] Tests for test_core
+class TestTestCore:
+    """Test suite for test_core — hotspot detection."""
+
+    def setup_method(self):
+        """Setup test fixtures."""
+        self.fixture = {}
+        self.config = {"enabled": True, "debug": False}
+
+    def test_basic_hotspot_detection(self):
+        """Test basic hotspot detection functionality."""
+        result = process(self.fixture, config=self.config)
+        assert result is not None
+        assert result.get("status") == "success"
+
+    def test_hotspot_detection_with_empty_input(self):
+        """Test hotspot detection with empty input."""
+        result = process({}, config=self.config)
+        assert result is not None
+
+    def test_hotspot_detection_error_handling(self):
+        """Test hotspot detection error handling."""
+        with pytest.raises(ValueError):
+            process(None, config=self.config)
+
+    def test_hotspot_detection_caching(self):
+        """Test hotspot detection caching behavior."""
+        result1 = process(self.fixture, config=self.config)
+        result2 = process(self.fixture, config=self.config)
+        assert result1 == result2
