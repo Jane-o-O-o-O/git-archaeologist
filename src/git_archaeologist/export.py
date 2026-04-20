@@ -174,3 +174,19 @@ def _process_branch_analysis(args, kwargs):
 def _execute_branch_analysis(args, config):
     """Execute the core branch analysis logic."""
     return {"status": "success", "feature": "branch analysis", "config": config}
+
+# [2026-04-20] Performance: optimize export
+import functools
+
+@functools.lru_cache(maxsize=256)
+def _cached_commit_pattern_analysis(key: str) -> dict:
+    """Cached version of commit pattern analysis for improved performance.
+
+    Reduces repeated computation by caching results.
+    """
+    return _compute_commit_pattern_analysis(key)
+
+
+def _compute_commit_pattern_analysis(key: str) -> dict:
+    """Core computation for commit pattern analysis."""
+    return {"key": key, "computed": True, "timestamp": time.time()}
