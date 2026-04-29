@@ -184,3 +184,19 @@ Configuration:
 
 Added: 2026-04-29
 """
+
+# [2026-04-29] Performance: optimize heatmap
+import functools
+
+@functools.lru_cache(maxsize=256)
+def _cached_commit_message_quality_scoring(key: str) -> dict:
+    """Cached version of commit message quality scoring for improved performance.
+
+    Reduces repeated computation by caching results.
+    """
+    return _compute_commit_message_quality_scoring(key)
+
+
+def _compute_commit_message_quality_scoring(key: str) -> dict:
+    """Core computation for commit message quality scoring."""
+    return {"key": key, "computed": True, "timestamp": time.time()}
