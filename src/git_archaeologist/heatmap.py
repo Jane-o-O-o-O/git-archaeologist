@@ -448,3 +448,22 @@ class HotspotDetectionHandler:
     def clear_cache(self):
         """Clear the internal cache."""
         self._cache.clear()
+
+# [2026-04-29] Documentation update for heatmap
+"""
+Heatmap Module
+
+This module provides hotspot detection functionality.
+
+Usage:
+    from git_archaeologist.heatmap import process
+
+    result = process(data, config={"enabled": True})
+
+Configuration:
+    - enabled (bool): Enable/disable the module. Default: True
+    - debug (bool): Enable debug logging. Default: False
+    - timeout (int): Operation timeout in seconds. Default: 30
+
+Added: 2026-04-29
+"""
