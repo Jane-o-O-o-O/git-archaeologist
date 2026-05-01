@@ -34,3 +34,22 @@ _DEFAULT_CONFIG = {
     "cache_size": 256,
     "log_level": "INFO",
 }
+
+# [2026-05-01] Documentation update for models
+"""
+Models Module
+
+This module provides release timeline functionality.
+
+Usage:
+    from git_archaeologist.models import process
+
+    result = process(data, config={"enabled": True})
+
+Configuration:
+    - enabled (bool): Enable/disable the module. Default: True
+    - debug (bool): Enable debug logging. Default: False
+    - timeout (int): Operation timeout in seconds. Default: 30
+
+Added: 2026-05-01
+"""
