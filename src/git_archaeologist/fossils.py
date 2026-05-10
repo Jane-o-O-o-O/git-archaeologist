@@ -1,8 +1,9 @@
 """文件化石发现模块 —— 查找长期未修改的文件"""
-import subprocess
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
+
+from git_archaeologist.utils import parse_git_date
 
 
 @dataclass
@@ -24,7 +25,6 @@ def find_fossils(repo, min_age_days: int = 365) -> list[Fossil]:
     Returns:
         化石列表，按年龄从大到小排序
     """
-    # 获取所有被跟踪的文件
     tracked = _get_tracked_files(repo)
     if not tracked:
         return []
@@ -51,7 +51,7 @@ def find_fossils(repo, min_age_days: int = 365) -> list[Fossil]:
 
 def _get_tracked_files(repo) -> list[str]:
     """获取仓库中所有被 git 跟踪的文件"""
-    result = repo._run_git(["ls-files"])
+    result = repo.run_git(["ls-files"])
     if not result:
         return []
     return [f for f in result.strip().split("\n") if f]
@@ -59,16 +59,9 @@ def _get_tracked_files(repo) -> list[str]:
 
 def _get_last_modified(repo, filepath: str) -> datetime | None:
     """获取文件最后一次被修改的时间（基于 git log）"""
-    result = repo._run_git([
+    result = repo.run_git([
         "log", "-1", "--format=%aI", "--", filepath
     ])
     if not result:
         return None
-    try:
-        # %aI 输出 ISO 8601 格式的时间（带时区）
-        date_str = result.strip()
-        dt = datetime.fromisoformat(date_str)
-        # 转为 naive datetime，去掉时区信息以便与 datetime.now() 比较
-        return dt.replace(tzinfo=None)
-    except (ValueError, TypeError):
-        return None
+    return parse_git_date(result.strip())

@@ -18,14 +18,14 @@ class Repo:
 
     def commit_count(self) -> int:
         """返回仓库总提交数"""
-        result = self._run_git(["rev-list", "--count", "HEAD"])
+        result = self.run_git(["rev-list", "--count", "HEAD"])
         if result is None:
             return 0
         return int(result.strip())
 
     def contributors(self) -> list[str]:
         """返回贡献者列表，格式为 'Name <email>'"""
-        result = self._run_git([
+        result = self.run_git([
             "log", "--format=%aN <%aE>"
         ])
         if result is None:
@@ -33,7 +33,7 @@ class Repo:
         unique = list(dict.fromkeys(result.strip().split("\n")))
         return unique
 
-    def _run_git(self, args: list[str]) -> str | None:
+    def run_git(self, args: list[str]) -> str | None:
         """执行 git 命令，返回输出或 None"""
         try:
             result = subprocess.run(

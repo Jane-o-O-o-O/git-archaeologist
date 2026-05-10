@@ -2,6 +2,8 @@
 from dataclasses import dataclass
 from datetime import datetime
 
+from git_archaeologist.utils import parse_git_date
+
 
 @dataclass
 class LineageEntry:
@@ -25,13 +27,12 @@ def trace_lineage(repo, filepath: str) -> list[LineageEntry] | None:
     Returns:
         血统记录列表（从新到旧），文件不存在则返回 None
     """
-    result = repo._run_git([
+    result = repo.run_git([
         "log", "--follow", "--name-status", "--format=COMMIT|%H|%s|%aI",
         "--diff-filter=ADRCM", "--", filepath
     ])
 
     if not result or not result.strip():
-        # 文件不存在或没有历史
         return None
 
     entries = []
@@ -55,17 +56,11 @@ def trace_lineage(repo, filepath: str) -> list[LineageEntry] | None:
             status_code = status_parts[0][0]  # 取状态首字母
 
             action = _parse_status(status_code)
-            try:
-                dt = datetime.fromisoformat(
-                    current_commit["date_str"]
-                ).replace(tzinfo=None)
-            except (ValueError, TypeError):
-                dt = datetime.min
+            dt = parse_git_date(current_commit["date_str"]) or datetime.min
 
             # 重命名/复制有两个路径：old\tnew
             if status_code in ("R", "C") and len(status_parts) == 3:
                 old_path, new_path = status_parts[1], status_parts[2]
-                # 记录旧路径（重命名前）
                 entries.append(LineageEntry(
                     path=old_path,
                     commit_hash=current_commit["hash"],
@@ -73,7 +68,6 @@ def trace_lineage(repo, filepath: str) -> list[LineageEntry] | None:
                     date=dt,
                     action=action,
                 ))
-                # 记录新路径（重命名后）
                 entries.append(LineageEntry(
                     path=new_path,
                     commit_hash=current_commit["hash"],

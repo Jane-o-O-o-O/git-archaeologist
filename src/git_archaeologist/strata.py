@@ -1,7 +1,8 @@
 """地层分析模块 —— 分析开发活跃期的'地质年代'"""
-import subprocess
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
+
+from git_archaeologist.utils import parse_git_date
 
 
 @dataclass
@@ -55,7 +56,7 @@ def analyze_strata(repo, gap_days: int = 14) -> list[Stratum]:
 
 def _get_commits_with_dates(repo) -> list[dict]:
     """获取所有提交及其日期和作者"""
-    result = repo._run_git(["log", "--format=%aI|%aN <%aE>"])
+    result = repo.run_git(["log", "--format=%aI|%aN <%aE>"])
     if not result or not result.strip():
         return []
 
@@ -65,11 +66,9 @@ def _get_commits_with_dates(repo) -> list[dict]:
         if len(parts) != 2:
             continue
         date_str, author = parts
-        try:
-            dt = datetime.fromisoformat(date_str).replace(tzinfo=None)
+        dt = parse_git_date(date_str)
+        if dt is not None:
             commits.append({"date": dt, "author": author})
-        except (ValueError, TypeError):
-            continue
 
     return commits
 
