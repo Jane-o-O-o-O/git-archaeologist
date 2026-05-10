@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "git-archaeologist"
+version = "0.1.0"
+description = "Git 仓库考古工具 —— 深入挖掘仓库的历史地层"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+
+[project.scripts]
+git-archaeologist = "git_archaeologist.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
