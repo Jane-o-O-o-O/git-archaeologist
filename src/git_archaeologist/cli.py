@@ -1,10 +1,11 @@
-"""CLI 子命令 — stats, authors, hotspots, activity。"""
+"""CLI 子命令 — stats, authors, hotspots, activity, filetypes, report。"""
 
 from __future__ import annotations
 
 import json
 import sys
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import click
 from rich.console import Console
@@ -244,6 +245,76 @@ def activity(
         bar = "█" * bar_len
         table.add_row(period_key, str(count), bar)
     console.print(table)
+
+
+@main.command()
+@click.option("--since", default=None, help="起始时间")
+@click.option("--until", default=None, help="结束时间")
+@click.option("--top", default=15, help="显示前 N 种文件类型")
+@click.option("--format", "fmt", type=click.Choice(["table", "json"]), default="table")
+@click.pass_context
+def filetypes(
+    ctx: click.Context, since: str | None, until: str | None, top: int, fmt: str
+) -> None:
+    """📁 文件类型分布"""
+    from git_archaeologist.core import GitArchaeologist
+
+    repo: str = ctx.obj["repo"]
+    arch = GitArchaeologist(repo)
+    result = arch.analyze_file_types(since=_parse_since(since), until=_parse_since(until))[:top]
+
+    if fmt == "json":
+        from dataclasses import asdict
+        click.echo(json.dumps([asdict(ft) for ft in result], ensure_ascii=False, indent=2))
+        return
+
+    if not result:
+        console.print("[dim]无数据[/]")
+        return
+
+    table = Table(title="📁 文件类型分布", show_lines=True)
+    table.add_column("扩展名", style="cyan")
+    table.add_column("文件数", justify="right")
+    table.add_column("变更次数", justify="right", style="bold yellow")
+    table.add_column("新增行", justify="right", style="green")
+    table.add_column("删除行", justify="right", style="red")
+
+    for ft in result:
+        table.add_row(
+            ft.extension,
+            str(ft.file_count),
+            str(ft.total_changes),
+            f"+{_format_number(ft.total_insertions)}",
+            f"-{_format_number(ft.total_deletions)}",
+        )
+    console.print(table)
+
+
+@main.command()
+@click.option("--since", default=None, help="起始时间")
+@click.option("--until", default=None, help="结束时间")
+@click.option("--output", "-o", default="report.html", help="输出文件路径")
+@click.option("--title", default=None, help="报告标题")
+@click.pass_context
+def report(
+    ctx: click.Context,
+    since: str | None,
+    until: str | None,
+    output: str,
+    title: str | None,
+) -> None:
+    """🌐 生成 HTML 分析报告"""
+    from git_archaeologist.report import save_html_report
+
+    repo: str = ctx.obj["repo"]
+    out = save_html_report(
+        output_path=output,
+        repo_path=repo,
+        since=_parse_since(since),
+        until=_parse_since(until),
+        title=title,
+    )
+    console.print(f"[green]✅ 报告已生成: {out.resolve()}[/]")
 
 
 if __name__ == "__main__":
