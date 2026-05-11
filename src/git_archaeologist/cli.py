@@ -7,6 +7,8 @@ from git_archaeologist.repo import Repo
 from git_archaeologist.fossils import find_fossils, Fossil
 from git_archaeologist.strata import analyze_strata, Stratum
 from git_archaeologist.lineage import trace_lineage
+from git_archaeologist.hotspots import find_hotspots, HotspotFile
+from git_archaeologist.authors import get_author_stats, AuthorStats
 
 
 def build_report(repo, fossils_age_days: int = 365) -> str:
@@ -34,6 +36,18 @@ def build_report(repo, fossils_age_days: int = 365) -> str:
         lines.append(f"   • {c}")
     lines.append("")
 
+    # 热点文件
+    lines.append("─" * 60)
+    lines.append("🔥 热点文件 (修改最频繁 Top 10):")
+    lines.append("─" * 60)
+    hotspots = find_hotspots(repo, top_n=10)
+    if hotspots:
+        for h in hotspots:
+            lines.append(format_hotspot(h))
+    else:
+        lines.append("   (无热点文件)")
+    lines.append("")
+
     # 化石
     lines.append("─" * 60)
     lines.append(f"🦴 文件化石 (未修改超过 {fossils_age_days} 天):")
@@ -58,6 +72,19 @@ def build_report(repo, fossils_age_days: int = 365) -> str:
     else:
         lines.append("   (无活跃期)")
     lines.append("")
+
+    # 贡献者统计
+    lines.append("─" * 60)
+    lines.append("👤 贡献者统计:")
+    lines.append("─" * 60)
+    author_stats = get_author_stats(repo)
+    if author_stats:
+        for a in author_stats:
+            lines.append(format_author_stats(a))
+    else:
+        lines.append("   (无贡献者)")
+    lines.append("")
+
     lines.append("=" * 60)
 
     return "\n".join(lines)
@@ -80,6 +107,31 @@ def format_stratum(stratum: Stratum) -> str:
         f"     时间范围: {start} → {end}\n"
         f"     提交数: {stratum.commit_count}\n"
         f"     贡献者: {stratum.contributor_count} 人"
+    )
+
+
+def format_hotspot(hotspot: HotspotFile) -> str:
+    """格式化单个热点文件记录"""
+    first = hotspot.first_seen.strftime("%Y-%m-%d")
+    last = hotspot.last_modified.strftime("%Y-%m-%d")
+    return (
+        f"   🔥 {hotspot.path}\n"
+        f"      修改次数: {hotspot.modification_count} | "
+        f"作者: {hotspot.unique_authors} 人 | "
+        f"活跃期: {first} → {last}"
+    )
+
+
+def format_author_stats(author: AuthorStats) -> str:
+    """格式化单个贡献者统计"""
+    first = author.first_commit.strftime("%Y-%m-%d")
+    last = author.last_commit.strftime("%Y-%m-%d")
+    return (
+        f"   👤 {author.name} <{author.email}>\n"
+        f"      提交: {author.commit_count} 次 | "
+        f"修改文件: {author.files_touched} 个 | "
+        f"+{author.lines_added}/-{author.lines_removed} 行\n"
+        f"      活跃期: {first} → {last}"
     )
 
 
@@ -135,6 +187,22 @@ def main():
         "contributors", help="显示贡献者列表"
     )
     contrib_parser.add_argument("path", nargs="?", default=".", help="仓库路径")
+
+    # hotspots 命令
+    hotspots_parser = subparsers.add_parser(
+        "hotspots", help="分析热点文件（修改最频繁的文件）"
+    )
+    hotspots_parser.add_argument("path", nargs="?", default=".", help="仓库路径")
+    hotspots_parser.add_argument(
+        "--top", type=int, default=20,
+        help="显示前 N 个热点文件，默认 20"
+    )
+
+    # authors 命令
+    authors_parser = subparsers.add_parser(
+        "authors", help="贡献者深度统计"
+    )
+    authors_parser.add_argument("path", nargs="?", default=".", help="仓库路径")
 
     args = parser.parse_args()
 
@@ -198,3 +266,29 @@ def main():
         print(f"👥 贡献者 ({len(contributors)} 人):")
         for c in contributors:
             print(f"   • {c}")
+
+    elif args.command == "hotspots":
+        repo = Repo(args.path)
+        if not repo.is_valid():
+            print(f"❌ 错误: {args.path} 不是有效的 git 仓库", file=sys.stderr)
+            sys.exit(1)
+        hotspots = find_hotspots(repo, top_n=args.top)
+        if hotspots:
+            print(f"🔥 热点文件 (Top {args.top}):")
+            for h in hotspots:
+                print(format_hotspot(h))
+        else:
+            print("未发现热点文件。")
+
+    elif args.command == "authors":
+        repo = Repo(args.path)
+        if not repo.is_valid():
+            print(f"❌ 错误: {args.path} 不是有效的 git 仓库", file=sys.stderr)
+            sys.exit(1)
+        stats = get_author_stats(repo)
+        if stats:
+            print(f"👤 贡献者统计 ({len(stats)} 人):")
+            for a in stats:
+                print(format_author_stats(a))
+        else:
+            print("无贡献者数据。")
