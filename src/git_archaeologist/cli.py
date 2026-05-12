@@ -1,4 +1,4 @@
-"""CLI 子命令 — stats, authors, hotspots, activity, filetypes, report。"""
+"""CLI 子命令 — stats, authors, hotspots, activity, filetypes, report, coupling, busfactor, churn, dirs, ages。"""
 
 from __future__ import annotations
 
@@ -315,6 +315,340 @@ def report(
         title=title,
     )
     console.print(f"[green]✅ 报告已生成: {out.resolve()}[/]")
+
+
+# ── 新增高级分析子命令 ────────────────────────────────────────────
+
+
+@main.command()
+@click.option("--since", default=None, help="起始时间")
+@click.option("--until", default=None, help="结束时间")
+@click.option("--top", default=20, help="显示前 N 对")
+@click.option("--min-co-change", default=2, help="最少共同修改次数")
+@click.option("--format", "fmt", type=click.Choice(["table", "json"]), default="table")
+@click.pass_context
+def coupling(
+    ctx: click.Context,
+    since: str | None,
+    until: str | None,
+    top: int,
+    min_co_change: int,
+    fmt: str,
+) -> None:
+    """🔗 文件耦合分析 — 经常一起被修改的文件对"""
+    analyzer: Analyzer = ctx.obj["analyzer"]
+    result = analyzer.coupling(
+        since=_parse_since(since),
+        until=_parse_since(until),
+        top_n=top,
+        min_co_change=min_co_change,
+    )
+
+    if fmt == "json":
+        data = [
+            {
+                "file_a": p.file_a,
+                "file_b": p.file_b,
+                "co_change_count": p.co_change_count,
+                "coupling_strength": p.coupling_strength,
+            }
+            for p in result
+        ]
+        click.echo(json.dumps(data, ensure_ascii=False, indent=2))
+        return
+
+    if not result:
+        console.print("[dim]无耦合数据[/]")
+        return
+
+    table = Table(title="🔗 文件耦合对", show_lines=True)
+    table.add_column("#", style="dim", width=4)
+    table.add_column("文件 A", style="cyan", max_width=40)
+    table.add_column("文件 B", style="cyan", max_width=40)
+    table.add_column("共变次数", justify="right", style="bold yellow")
+    table.add_column("耦合强度", justify="right", style="green")
+
+    for i, p in enumerate(result, 1):
+        strength_bar = "█" * int(p.coupling_strength * 10)
+        table.add_row(
+            str(i),
+            p.file_a,
+            p.file_b,
+            str(p.co_change_count),
+            f"{p.coupling_strength:.1%} {strength_bar}",
+        )
+    console.print(table)
+
+
+@main.command()
+@click.option("--since", default=None, help="起始时间")
+@click.option("--until", default=None, help="结束时间")
+@click.option("--entity", type=click.Choice(["file", "dir"]), default="file", help="分析粒度")
+@click.option("--top", default=20, help="显示前 N 个")
+@click.option("--format", "fmt", type=click.Choice(["table", "json"]), default="table")
+@click.pass_context
+def busfactor(
+    ctx: click.Context,
+    since: str | None,
+    until: str | None,
+    entity: str,
+    top: int,
+    fmt: str,
+) -> None:
+    """🚌 Bus Factor — 关键人员依赖度分析"""
+    analyzer: Analyzer = ctx.obj["analyzer"]
+    result = analyzer.bus_factor(
+        since=_parse_since(since),
+        until=_parse_since(until),
+        entity=entity,
+        top_n=top,
+    )
+
+    if fmt == "json":
+        data = [
+            {
+                "entity": e.entity,
+                "total_changes": e.total_changes,
+                "top_contributor": e.top_contributor,
+                "top_contributor_pct": e.top_contributor_pct,
+                "contributor_count": e.contributor_count,
+                "bus_factor": e.bus_factor,
+                "contributors": e.contributors,
+            }
+            for e in result
+        ]
+        click.echo(json.dumps(data, ensure_ascii=False, indent=2))
+        return
+
+    if not result:
+        console.print("[dim]无数据[/]")
+        return
+
+    entity_label = "目录" if entity == "dir" else "文件"
+    table = Table(title=f"🚌 Bus Factor（按{entity_label}）", show_lines=True)
+    table.add_column("#", style="dim", width=4)
+    table.add_column(entity_label, style="cyan", max_width=50)
+    table.add_column("主要贡献者", style="bold")
+    table.add_column("占比", justify="right", style="bold yellow")
+    table.add_column("贡献者数", justify="right")
+    table.add_column("Bus Factor", justify="right", style="red")
+
+    for i, e in enumerate(result, 1):
+        risk = "[red]⚠ 高[/]" if e.bus_factor == 1 else "[green]✓ 安全[/]"
+        table.add_row(
+            str(i),
+            e.entity,
+            e.top_contributor,
+            f"{e.top_contributor_pct:.0f}%",
+            str(e.contributor_count),
+            f"{e.bus_factor} {risk}",
+        )
+    console.print(table)
+
+
+@main.command()
+@click.option("--since", default=None, help="起始时间")
+@click.option("--until", default=None, help="结束时间")
+@click.option("--top", default=20, help="显示前 N 个")
+@click.option("--format", "fmt", type=click.Choice(["table", "json"]), default="table")
+@click.pass_context
+def churn(
+    ctx: click.Context,
+    since: str | None,
+    until: str | None,
+    top: int,
+    fmt: str,
+) -> None:
+    """🔄 Churn 分析 — 高变动率文件（反复重写）"""
+    analyzer: Analyzer = ctx.obj["analyzer"]
+    result = analyzer.churn(
+        since=_parse_since(since),
+        until=_parse_since(until),
+        top_n=top,
+    )
+
+    if fmt == "json":
+        data = [
+            {
+                "path": e.path,
+                "total_insertions": e.total_insertions,
+                "total_deletions": e.total_deletions,
+                "net_lines": e.net_lines,
+                "change_count": e.change_count,
+                "churn_ratio": e.churn_ratio,
+            }
+            for e in result
+        ]
+        click.echo(json.dumps(data, ensure_ascii=False, indent=2))
+        return
+
+    if not result:
+        console.print("[dim]无数据[/]")
+        return
+
+    table = Table(title="🔄 Churn 分析", show_lines=True)
+    table.add_column("#", style="dim", width=4)
+    table.add_column("文件路径", style="cyan", max_width=50)
+    table.add_column("变更次数", justify="right")
+    table.add_column("新增行", justify="right", style="green")
+    table.add_column("删除行", justify="right", style="red")
+    table.add_column("净变更", justify="right")
+    table.add_column("变动率", justify="right", style="bold yellow")
+
+    for i, e in enumerate(result, 1):
+        risk = "[red]⚠ 高[/]" if e.churn_ratio > 5 else ""
+        table.add_row(
+            str(i),
+            e.path,
+            str(e.change_count),
+            f"+{_format_number(e.total_insertions)}",
+            f"-{_format_number(e.total_deletions)}",
+            _format_number(e.net_lines),
+            f"{e.churn_ratio}x {risk}",
+        )
+    console.print(table)
+
+
+@main.command("dirs")
+@click.option("--since", default=None, help="起始时间")
+@click.option("--until", default=None, help="结束时间")
+@click.option("--top", default=20, help="显示前 N 个目录")
+@click.option("--format", "fmt", type=click.Choice(["table", "json"]), default="table")
+@click.pass_context
+def dirs_cmd(
+    ctx: click.Context,
+    since: str | None,
+    until: str | None,
+    top: int,
+    fmt: str,
+) -> None:
+    """📂 目录级统计"""
+    analyzer: Analyzer = ctx.obj["analyzer"]
+    result = analyzer.dir_stats(
+        since=_parse_since(since),
+        until=_parse_since(until),
+        top_n=top,
+    )
+
+    if fmt == "json":
+        data = [
+            {
+                "path": d.path,
+                "file_count": d.file_count,
+                "total_changes": d.total_changes,
+                "total_insertions": d.total_insertions,
+                "total_deletions": d.total_deletions,
+                "authors": list(d.authors),
+                "last_modified": d.last_modified.isoformat() if d.last_modified else None,
+            }
+            for d in result
+        ]
+        click.echo(json.dumps(data, ensure_ascii=False, indent=2))
+        return
+
+    if not result:
+        console.print("[dim]无数据[/]")
+        return
+
+    table = Table(title="📂 目录统计", show_lines=True)
+    table.add_column("#", style="dim", width=4)
+    table.add_column("目录", style="cyan", max_width=50)
+    table.add_column("文件数", justify="right")
+    table.add_column("变更次数", justify="right", style="bold yellow")
+    table.add_column("新增行", justify="right", style="green")
+    table.add_column("删除行", justify="right", style="red")
+    table.add_column("贡献者数", justify="right")
+    table.add_column("最后修改", justify="right")
+
+    for i, d in enumerate(result, 1):
+        last_mod = d.last_modified.strftime("%Y-%m-%d") if d.last_modified else "-"
+        table.add_row(
+            str(i),
+            d.path,
+            str(d.file_count),
+            str(d.total_changes),
+            f"+{_format_number(d.total_insertions)}",
+            f"-{_format_number(d.total_deletions)}",
+            str(len(d.authors)),
+            last_mod,
+        )
+    console.print(table)
+
+
+@main.command("ages")
+@click.option("--since", default=None, help="起始时间")
+@click.option("--until", default=None, help="结束时间")
+@click.option(
+    "--sort",
+    type=click.Choice(["stale", "oldest", "active"]),
+    default="stale",
+    help="排序方式",
+)
+@click.option("--top", default=20, help="显示前 N 个")
+@click.option("--format", "fmt", type=click.Choice(["table", "json"]), default="table")
+@click.pass_context
+def ages_cmd(
+    ctx: click.Context,
+    since: str | None,
+    until: str | None,
+    sort: str,
+    top: int,
+    fmt: str,
+) -> None:
+    """🕰️ 文件年龄分析 — 最陈旧/最早/最活跃"""
+    analyzer: Analyzer = ctx.obj["analyzer"]
+    result = analyzer.file_ages(
+        since=_parse_since(since),
+        until=_parse_since(until),
+        sort_by=sort,
+        top_n=top,
+    )
+
+    if fmt == "json":
+        data = [
+            {
+                "path": e.path,
+                "first_seen": e.first_seen.isoformat() if e.first_seen else None,
+                "last_modified": e.last_modified.isoformat() if e.last_modified else None,
+                "change_count": e.change_count,
+                "primary_author": e.primary_author,
+                "age_days": e.age_days,
+                "stale_days": e.stale_days,
+            }
+            for e in result
+        ]
+        click.echo(json.dumps(data, ensure_ascii=False, indent=2))
+        return
+
+    if not result:
+        console.print("[dim]无数据[/]")
+        return
+
+    sort_labels = {"stale": "最陈旧", "oldest": "最早出现", "active": "最近修改"}
+    table = Table(title=f"🕰️ 文件年龄（{sort_labels.get(sort, sort)}）", show_lines=True)
+    table.add_column("#", style="dim", width=4)
+    table.add_column("文件路径", style="cyan", max_width=50)
+    table.add_column("变更次数", justify="right")
+    table.add_column("主要作者", style="bold")
+    table.add_column("首次出现", justify="right")
+    table.add_column("最后修改", justify="right")
+    table.add_column("陈旧天数", justify="right", style="bold yellow")
+
+    for i, e in enumerate(result, 1):
+        first = e.first_seen.strftime("%Y-%m-%d") if e.first_seen else "-"
+        last = e.last_modified.strftime("%Y-%m-%d") if e.last_modified else "-"
+        stale = str(e.stale_days) if e.stale_days is not None else "-"
+        stale_style = "[red]" if (e.stale_days or 0) > 365 else ""
+        table.add_row(
+            str(i),
+            e.path,
+            str(e.change_count),
+            e.primary_author or "-",
+            first,
+            last,
+            f"{stale_style}{stale}",
+        )
+    console.print(table)
 
 
 if __name__ == "__main__":
