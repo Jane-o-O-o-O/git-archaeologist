@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from itertools import combinations
 from pathlib import Path
 
@@ -144,6 +145,35 @@ class FileAgeEntry:
         if self.last_modified:
             return (datetime.now() - self.last_modified).days
         return None
+
+
+@dataclass
+class HealthScore:
+    """仓库健康评分结果。"""
+
+    overall: int = 0
+    bus_factor_score: int = 0
+    churn_score: int = 0
+    activity_score: int = 0
+    diversity_score: int = 0
+    summary: str = ""
+    details: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
+class CommitMessageStats:
+    """Commit 消息模式分析结果。"""
+
+    total_commits: int = 0
+    conventional_count: int = 0
+    conventional_pct: float = 0.0
+    type_counts: dict[str, int] = field(default_factory=dict)
+    avg_message_length: float = 0.0
+    max_message_length: int = 0
+    min_message_length: int = 0
+    short_messages: int = 0  # < 10 chars
+    long_messages: int = 0   # > 72 chars
+    most_common_words: list[tuple[str, int]] = field(default_factory=list)
 
 
 class Analyzer:
@@ -634,3 +664,162 @@ class Analyzer:
         hour_labels = [f"{h:02d}" for h in range(24)]
         matrix = [[heatmap[day][h] for h in hour_labels] for day in day_labels]
         return day_labels, hour_labels, matrix
+
+    def health_score(
+        self,
+        since: datetime | None = None,
+        until: datetime | None = None,
+    ) -> HealthScore:
+        """计算仓库健康评分 (0-100)。
+
+        综合评估维度：
+        - Bus Factor (30分): 贡献者集中度
+        - Churn (20分): 代码变动稳定性
+        - Activity (25分): 最近活跃度
+        - Diversity (25分): 贡献者多样性
+        """
+        details: dict[str, str] = {}
+
+        # ── Bus Factor 评分 (30分) ──
+        bus_entries = self.bus_factor(since=since, until=until, entity="file", top_n=50)
+        if bus_entries:
+            avg_bf = sum(e.bus_factor for e in bus_entries) / len(bus_entries)
+            high_risk = sum(1 for e in bus_entries if e.bus_factor == 1)
+            risk_pct = high_risk / len(bus_entries) if bus_entries else 0
+            # bf >= 3 且高风险占比 < 20% => 满分
+            bf_score = min(30, int(avg_bf * 10) + int((1 - risk_pct) * 10))
+            details["bus_factor"] = (
+                f"平均 BF={avg_bf:.1f}, 高风险文件 {high_risk}/{len(bus_entries)} ({risk_pct:.0%})"
+            )
+        else:
+            bf_score = 15
+            details["bus_factor"] = "无数据"
+
+        # ── Churn 评分 (20分) ──
+        churn_entries = self.churn(since=since, until=until, top_n=50)
+        if churn_entries:
+            avg_churn = sum(e.churn_ratio for e in churn_entries) / len(churn_entries)
+            high_churn = sum(1 for e in churn_entries if e.churn_ratio > 5)
+            churn_pct = high_churn / len(churn_entries) if churn_entries else 0
+            # 低 churn + 低高churn占比 => 高分
+            churn_score = min(20, int(max(0, 20 - avg_churn * 2) * (1 - churn_pct * 0.5)))
+            details["churn"] = (
+                f"平均变动率={avg_churn:.1f}x, 高变动文件 {high_churn}/{len(churn_entries)} ({churn_pct:.0%})"
+            )
+        else:
+            churn_score = 10
+            details["churn"] = "无数据"
+
+        # ── Activity 评分 (25分) ──
+        stats = self.repo_stats(since=since, until=until)
+        if stats.total_commits > 0:
+            # 考虑: 日均commit、活跃天数、最近活跃度
+            daily_score = min(10, int(stats.avg_commits_per_day * 5))
+            activity_days_score = min(10, stats.active_days // 10)
+            # 最近30天有commit => +5
+            recent_commits = self.repo_stats(
+                since=datetime.now().replace(hour=0, minute=0, second=0) - timedelta(days=30),
+                until=until,
+            )
+            recency = 5 if recent_commits.total_commits > 0 else 0
+            activity_score = daily_score + activity_days_score + recency
+            details["activity"] = (
+                f"日均={stats.avg_commits_per_day}, 活跃天={stats.active_days}, "
+                f"近30天={recent_commits.total_commits} commits"
+            )
+        else:
+            activity_score = 0
+            details["activity"] = "无 commit 数据"
+
+        # ── Diversity 评分 (25分) ──
+        authors = self.author_stats(since=since, until=until, top_n=100)
+        if authors:
+            n_authors = len(authors)
+            top_pct = authors[0].commit_count / stats.total_commits if stats.total_commits > 0 else 1
+            # 多贡献者 + 低集中度 => 高分
+            author_score = min(15, n_authors * 3)
+            concentration_score = min(10, int((1 - top_pct) * 15))
+            diversity_score = author_score + concentration_score
+            details["diversity"] = (
+                f"贡献者={n_authors}, 最活跃占比={top_pct:.0%}"
+            )
+        else:
+            diversity_score = 0
+            details["diversity"] = "无贡献者数据"
+
+        overall = bf_score + churn_score + activity_score + diversity_score
+
+        # 评级
+        if overall >= 80:
+            summary = "🟢 优秀 — 仓库健康状况良好"
+        elif overall >= 60:
+            summary = "🟡 良好 — 仓库基本健康，有改进空间"
+        elif overall >= 40:
+            summary = "🟠 一般 — 存在明显风险，建议关注"
+        else:
+            summary = "🔴 较差 — 多项指标异常，需要重点治理"
+
+        return HealthScore(
+            overall=min(100, overall),
+            bus_factor_score=bf_score,
+            churn_score=churn_score,
+            activity_score=activity_score,
+            diversity_score=diversity_score,
+            summary=summary,
+            details=details,
+        )
+
+    def commit_message_stats(
+        self,
+        since: datetime | None = None,
+        until: datetime | None = None,
+    ) -> CommitMessageStats:
+        """分析 commit 消息模式。
+
+        统计 conventional commits 类型、消息长度分布、常见词汇。
+        """
+        conventional_pattern = re.compile(
+            r"^(?P<type>\w+)(?:\((?P<scope>[^)]+)\))?(?P<breaking>!)?\s*:\s*"
+        )
+        type_counter: Counter[str] = Counter()
+        lengths: list[int] = []
+        words: Counter[str] = Counter()
+        conventional_count = 0
+        short_count = 0
+        long_count = 0
+
+        for c in self.miner.iter_commits(since=since, until=until):
+            msg = c.message.split("\n")[0].strip()  # 取首行
+            msg_len = len(msg)
+            lengths.append(msg_len)
+
+            if msg_len < 10:
+                short_count += 1
+            if msg_len > 72:
+                long_count += 1
+
+            # conventional commit 检测
+            m = conventional_pattern.match(msg)
+            if m:
+                conventional_count += 1
+                type_counter[m.group("type").lower()] += 1
+
+            # 词汇统计 (过滤常见停用词和短词)
+            stop_words = {"the", "a", "an", "is", "are", "was", "in", "on", "at", "to", "of"}
+            for word in re.findall(r"[a-zA-Z]{3,}", msg.lower()):
+                if word not in stop_words:
+                    words[word] += 1
+
+        total = len(lengths) or 1
+        return CommitMessageStats(
+            total_commits=total,
+            conventional_count=conventional_count,
+            conventional_pct=round(conventional_count / total * 100, 1),
+            type_counts=dict(type_counter.most_common(20)),
+            avg_message_length=round(sum(lengths) / total, 1) if lengths else 0,
+            max_message_length=max(lengths) if lengths else 0,
+            min_message_length=min(lengths) if lengths else 0,
+            short_messages=short_count,
+            long_messages=long_count,
+            most_common_words=words.most_common(20),
+        )

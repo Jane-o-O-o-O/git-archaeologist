@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import csv
+import io
 import json
 from datetime import datetime, timedelta
 
@@ -12,6 +14,25 @@ from rich.table import Table
 from git_archaeologist.analyzer import Analyzer
 
 console = Console()
+
+
+def _output_csv(headers: list[str], rows: list[list[str]]) -> str:
+    """生成 CSV 格式输出。"""
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(headers)
+    for row in rows:
+        writer.writerow(row)
+    return buf.getvalue()
+
+
+def _output_markdown_table(headers: list[str], rows: list[list[str]]) -> str:
+    """生成 Markdown 表格输出。"""
+    lines = ["| " + " | ".join(headers) + " |"]
+    lines.append("| " + " | ".join(["---"] * len(headers)) + " |")
+    for row in rows:
+        lines.append("| " + " | ".join(str(c) for c in row) + " |")
+    return "\n".join(lines)
 
 
 def _parse_since(value: str | None) -> datetime | None:
@@ -53,7 +74,7 @@ def main(ctx: click.Context, repo: str) -> None:
 @main.command()
 @click.option("--since", default=None, help="起始时间 (YYYY-MM-DD 或 1y/6m/30d)")
 @click.option("--until", default=None, help="结束时间")
-@click.option("--format", "fmt", type=click.Choice(["table", "json"]), default="table")
+@click.option("--format", "fmt", type=click.Choice(["table", "json", "csv", "markdown"]), default="table")
 @click.pass_context
 def stats(ctx: click.Context, since: str | None, until: str | None, fmt: str) -> None:
     """📊 仓库总体统计"""
@@ -97,7 +118,7 @@ def stats(ctx: click.Context, since: str | None, until: str | None, fmt: str) ->
 @click.option("--since", default=None, help="起始时间")
 @click.option("--until", default=None, help="结束时间")
 @click.option("--top", default=20, help="显示前 N 位贡献者")
-@click.option("--format", "fmt", type=click.Choice(["table", "json"]), default="table")
+@click.option("--format", "fmt", type=click.Choice(["table", "json", "csv", "markdown"]), default="table")
 @click.pass_context
 def authors(
     ctx: click.Context, since: str | None, until: str | None, top: int, fmt: str
@@ -151,7 +172,7 @@ def authors(
 @click.option("--until", default=None, help="结束时间")
 @click.option("--top", default=20, help="显示前 N 个热点文件")
 @click.option("--ignore", multiple=True, help="忽略的文件 glob 模式")
-@click.option("--format", "fmt", type=click.Choice(["table", "json"]), default="table")
+@click.option("--format", "fmt", type=click.Choice(["table", "json", "csv", "markdown"]), default="table")
 @click.pass_context
 def hotspots(
     ctx: click.Context,
@@ -213,7 +234,7 @@ def hotspots(
     default="month",
     help="统计周期",
 )
-@click.option("--format", "fmt", type=click.Choice(["table", "json"]), default="table")
+@click.option("--format", "fmt", type=click.Choice(["table", "json", "csv", "markdown"]), default="table")
 @click.pass_context
 def activity(
     ctx: click.Context, since: str | None, until: str | None, period: str, fmt: str
@@ -249,7 +270,7 @@ def activity(
 @click.option("--since", default=None, help="起始时间")
 @click.option("--until", default=None, help="结束时间")
 @click.option("--top", default=15, help="显示前 N 种文件类型")
-@click.option("--format", "fmt", type=click.Choice(["table", "json"]), default="table")
+@click.option("--format", "fmt", type=click.Choice(["table", "json", "csv", "markdown"]), default="table")
 @click.pass_context
 def filetypes(
     ctx: click.Context, since: str | None, until: str | None, top: int, fmt: str
@@ -323,7 +344,7 @@ def report(
 @click.option("--until", default=None, help="结束时间")
 @click.option("--top", default=20, help="显示前 N 对")
 @click.option("--min-co-change", default=2, help="最少共同修改次数")
-@click.option("--format", "fmt", type=click.Choice(["table", "json"]), default="table")
+@click.option("--format", "fmt", type=click.Choice(["table", "json", "csv", "markdown"]), default="table")
 @click.pass_context
 def coupling(
     ctx: click.Context,
@@ -383,7 +404,7 @@ def coupling(
 @click.option("--until", default=None, help="结束时间")
 @click.option("--entity", type=click.Choice(["file", "dir"]), default="file", help="分析粒度")
 @click.option("--top", default=20, help="显示前 N 个")
-@click.option("--format", "fmt", type=click.Choice(["table", "json"]), default="table")
+@click.option("--format", "fmt", type=click.Choice(["table", "json", "csv", "markdown"]), default="table")
 @click.pass_context
 def busfactor(
     ctx: click.Context,
@@ -448,7 +469,7 @@ def busfactor(
 @click.option("--since", default=None, help="起始时间")
 @click.option("--until", default=None, help="结束时间")
 @click.option("--top", default=20, help="显示前 N 个")
-@click.option("--format", "fmt", type=click.Choice(["table", "json"]), default="table")
+@click.option("--format", "fmt", type=click.Choice(["table", "json", "csv", "markdown"]), default="table")
 @click.pass_context
 def churn(
     ctx: click.Context,
@@ -511,7 +532,7 @@ def churn(
 @click.option("--since", default=None, help="起始时间")
 @click.option("--until", default=None, help="结束时间")
 @click.option("--top", default=20, help="显示前 N 个目录")
-@click.option("--format", "fmt", type=click.Choice(["table", "json"]), default="table")
+@click.option("--format", "fmt", type=click.Choice(["table", "json", "csv", "markdown"]), default="table")
 @click.pass_context
 def dirs_cmd(
     ctx: click.Context,
@@ -583,7 +604,7 @@ def dirs_cmd(
     help="排序方式",
 )
 @click.option("--top", default=20, help="显示前 N 个")
-@click.option("--format", "fmt", type=click.Choice(["table", "json"]), default="table")
+@click.option("--format", "fmt", type=click.Choice(["table", "json", "csv", "markdown"]), default="table")
 @click.pass_context
 def ages_cmd(
     ctx: click.Context,
@@ -656,7 +677,7 @@ if __name__ == "__main__":
 @main.command()
 @click.option("--since", default=None, help="起始时间")
 @click.option("--until", default=None, help="结束时间")
-@click.option("--format", "fmt", type=click.Choice(["table", "json"]), default="table")
+@click.option("--format", "fmt", type=click.Choice(["table", "json", "csv", "markdown"]), default="table")
 @click.pass_context
 def heatmap(ctx: click.Context, since: str | None, until: str | None, fmt: str) -> None:
     """🗓️ Commit 热力图 — 按星期×小时分析活跃模式"""
@@ -719,7 +740,7 @@ def heatmap(ctx: click.Context, since: str | None, until: str | None, fmt: str) 
 @main.command()
 @click.option("--since", default=None, help="起始时间")
 @click.option("--until", default=None, help="结束时间")
-@click.option("--format", "fmt", type=click.Choice(["table", "json"]), default="table")
+@click.option("--format", "fmt", type=click.Choice(["table", "json", "csv", "markdown"]), default="table")
 @click.pass_context
 def summary(ctx: click.Context, since: str | None, until: str | None, fmt: str) -> None:
     """📋 一站式仓库分析概览"""
