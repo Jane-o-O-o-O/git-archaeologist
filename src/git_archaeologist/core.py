@@ -13,7 +13,7 @@ from git_archaeologist.analyzer import (
     HotspotFile,
     RepoStats,
 )
-from git_archaeologist.git_mining import CommitInfo, GitMiner
+from git_archaeologist.git_mining import GitMiner
 
 
 @dataclass

@@ -8,7 +8,7 @@ from datetime import datetime
 from itertools import combinations
 from pathlib import Path
 
-from git_archaeologist.git_mining import CommitInfo, GitMiner
+from git_archaeologist.git_mining import GitMiner
 
 
 @dataclass
@@ -156,7 +156,12 @@ class Analyzer:
         self,
         since: datetime | None = None,
         until: datetime | None = None,
-    ) -> tuple[list[set[str]], dict[str, int], dict[str, dict[str, int]], dict[str, list[tuple[str, int, int]]]]:
+    ) -> tuple[
+        list[set[str]],
+        dict[str, int],
+        dict[str, dict[str, int]],
+        dict[str, list[tuple[str, int, int]]],
+    ]:
         """一次遍历收集所有 commit 的文件变更信息，供多个分析方法复用。
 
         Returns:
@@ -181,7 +186,12 @@ class Analyzer:
                     co_change_counts[fa][fb] += 1
                     co_change_counts[fb][fa] += 1
 
-        return commit_file_sets, file_change_counts, dict(co_change_counts), dict(file_author_changes)
+        return (
+            commit_file_sets,
+            file_change_counts,
+            dict(co_change_counts),
+            dict(file_author_changes),
+        )
 
     # ── 原有方法 ──────────────────────────────────────────────────
 
@@ -431,19 +441,25 @@ class Analyzer:
         """Churn 分析 — 找出变动率最高的文件。
 
         变动率 = (总新增 + 总删除) / |净变更|。越高说明代码反复重写。
+        使用文件级精确 diff 数据。
         """
         file_data: dict[str, dict[str, int]] = defaultdict(lambda: {"ins": 0, "del": 0, "count": 0})
 
-        for c in self.miner.iter_commits(since=since, until=until):
-            # 需要文件级别的 ins/del，但 CommitInfo 只有 commit 级别的
-            # 这里用 commit 级别近似分配给每个文件
-            n_files = len(c.files_changed) or 1
-            per_file_ins = c.insertions / n_files
-            per_file_del = c.deletions / n_files
-            for f in c.files_changed:
-                file_data[f]["ins"] += per_file_ins
-                file_data[f]["del"] += per_file_del
-                file_data[f]["count"] += 1
+        for c, file_changes in self.miner.iter_commits_with_details(since=since, until=until):
+            if file_changes:
+                for fc in file_changes:
+                    file_data[fc.path]["ins"] += fc.insertions
+                    file_data[fc.path]["del"] += fc.deletions
+                    file_data[fc.path]["count"] += 1
+            else:
+                # fallback: commit 级别近似
+                n_files = len(c.files_changed) or 1
+                per_file_ins = c.insertions / n_files
+                per_file_del = c.deletions / n_files
+                for f in c.files_changed:
+                    file_data[f]["ins"] += per_file_ins
+                    file_data[f]["del"] += per_file_del
+                    file_data[f]["count"] += 1
 
         entries = []
         for fpath, data in file_data.items():
@@ -468,31 +484,55 @@ class Analyzer:
         until: datetime | None = None,
         top_n: int = 20,
     ) -> list[DirStats]:
-        """目录级统计聚合。"""
+        """目录级统计聚合。使用文件级精确 diff 数据。"""
         dirs: dict[str, DirStats] = {}
 
-        for c in self.miner.iter_commits(since=since, until=until):
-            n_files = len(c.files_changed) or 1
-            per_file_ins = c.insertions / n_files
-            per_file_del = c.deletions / n_files
-
+        for c, file_changes in self.miner.iter_commits_with_details(since=since, until=until):
             seen_dirs: set[str] = set()
-            for fpath in c.files_changed:
-                d = str(Path(fpath).parent)
-                if d == ".":
-                    d = "(root)"
-                seen_dirs.add(d)
 
-            for d in seen_dirs:
-                if d not in dirs:
-                    dirs[d] = DirStats(path=d)
-                ds = dirs[d]
-                ds.total_changes += 1
-                ds.total_insertions += int(per_file_ins)
-                ds.total_deletions += int(per_file_del)
-                ds.authors.add(c.author_name)
-                if ds.last_modified is None or c.authored_date > ds.last_modified:
-                    ds.last_modified = c.authored_date
+            if file_changes:
+                # 按目录聚合文件级 ins/del
+                dir_ins: dict[str, int] = defaultdict(int)
+                dir_del: dict[str, int] = defaultdict(int)
+                for fc in file_changes:
+                    d = str(Path(fc.path).parent)
+                    if d == ".":
+                        d = "(root)"
+                    seen_dirs.add(d)
+                    dir_ins[d] += fc.insertions
+                    dir_del[d] += fc.deletions
+
+                for d in seen_dirs:
+                    if d not in dirs:
+                        dirs[d] = DirStats(path=d)
+                    ds = dirs[d]
+                    ds.total_changes += 1
+                    ds.total_insertions += dir_ins[d]
+                    ds.total_deletions += dir_del[d]
+                    ds.authors.add(c.author_name)
+                    if ds.last_modified is None or c.authored_date > ds.last_modified:
+                        ds.last_modified = c.authored_date
+            else:
+                # fallback: commit 级别近似
+                n_files = len(c.files_changed) or 1
+                per_file_ins = c.insertions / n_files
+                per_file_del = c.deletions / n_files
+                for fpath in c.files_changed:
+                    d = str(Path(fpath).parent)
+                    if d == ".":
+                        d = "(root)"
+                    seen_dirs.add(d)
+
+                for d in seen_dirs:
+                    if d not in dirs:
+                        dirs[d] = DirStats(path=d)
+                    ds = dirs[d]
+                    ds.total_changes += 1
+                    ds.total_insertions += int(per_file_ins)
+                    ds.total_deletions += int(per_file_del)
+                    ds.authors.add(c.author_name)
+                    if ds.last_modified is None or c.authored_date > ds.last_modified:
+                        ds.last_modified = c.authored_date
 
         # 统计每个目录下的文件数（从 commit 历史中收集）
         all_files: set[str] = set()
@@ -553,3 +593,44 @@ class Analyzer:
             result.sort(key=lambda e: e.last_modified or datetime.min)
 
         return result[:top_n]
+
+    def commit_heatmap(
+        self,
+        since: datetime | None = None,
+        until: datetime | None = None,
+    ) -> dict[str, dict[str, int]]:
+        """Commit 热力图数据 — 按星期×小时统计 commit 分布。
+
+        Returns:
+            嵌套 dict: {day_name: {hour_str: count}}，例如 {"Monday": {"09": 5, "14": 3}}
+            星期顺序: Monday ~ Sunday, 小时: "00" ~ "23"
+        """
+        days_order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        heatmap: dict[str, dict[str, int]] = {
+            day: {f"{h:02d}": 0 for h in range(24)} for day in days_order
+        }
+
+        for c in self.miner.iter_commits(since=since, until=until):
+            day_name = c.authored_date.strftime("%A")
+            hour_key = f"{c.authored_date.hour:02d}"
+            if day_name in heatmap:
+                heatmap[day_name][hour_key] += 1
+
+        return heatmap
+
+    def commit_heatmap_matrix(
+        self,
+        since: datetime | None = None,
+        until: datetime | None = None,
+    ) -> tuple[list[str], list[str], list[list[int]]]:
+        """Commit 热力图矩阵形式 — 适合可视化渲染。
+
+        Returns:
+            (day_labels, hour_labels, matrix) 元组
+            matrix[i][j] = 第 i 天第 j 小时的 commit 数
+        """
+        heatmap = self.commit_heatmap(since=since, until=until)
+        day_labels = list(heatmap.keys())
+        hour_labels = [f"{h:02d}" for h in range(24)]
+        matrix = [[heatmap[day][h] for h in hour_labels] for day in day_labels]
+        return day_labels, hour_labels, matrix

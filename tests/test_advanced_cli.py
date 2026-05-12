@@ -10,8 +10,8 @@ from click.testing import CliRunner
 
 from git_archaeologist.cli import main
 from tests.helpers import (
-    create_coupling_repo,
     create_bus_factor_repo,
+    create_coupling_repo,
     create_multi_dir_repo,
     create_test_repo,
 )
@@ -50,7 +50,10 @@ class TestCouplingCLI:
     def test_coupling_min_co_change(self, runner):
         tmpdir, _ = create_coupling_repo()
         try:
-            result = runner.invoke(main, ["--repo", tmpdir, "coupling", "--min-co-change", "10", "--format", "json"])
+            result = runner.invoke(main, [
+                "--repo", tmpdir, "coupling",
+                "--min-co-change", "10", "--format", "json",
+            ])
             assert result.exit_code == 0
             data = json.loads(result.output)
             # 高阈值应该返回更少结果
@@ -87,7 +90,10 @@ class TestBusfactorCLI:
     def test_busfactor_by_dir(self, runner):
         tmpdir, _ = create_bus_factor_repo()
         try:
-            result = runner.invoke(main, ["--repo", tmpdir, "busfactor", "--entity", "dir", "--format", "json"])
+            result = runner.invoke(main, [
+                "--repo", tmpdir, "busfactor",
+                "--entity", "dir", "--format", "json",
+            ])
             assert result.exit_code == 0
             data = json.loads(result.output)
             assert isinstance(data, list)
@@ -177,7 +183,10 @@ class TestAgesCLI:
     def test_ages_sort_oldest(self, runner):
         tmpdir, _ = create_test_repo(num_commits=5)
         try:
-            result = runner.invoke(main, ["--repo", tmpdir, "ages", "--sort", "oldest", "--format", "json"])
+            result = runner.invoke(main, [
+                "--repo", tmpdir, "ages",
+                "--sort", "oldest", "--format", "json",
+            ])
             assert result.exit_code == 0
             data = json.loads(result.output)
             assert isinstance(data, list)
@@ -187,7 +196,10 @@ class TestAgesCLI:
     def test_ages_sort_active(self, runner):
         tmpdir, _ = create_test_repo(num_commits=5)
         try:
-            result = runner.invoke(main, ["--repo", tmpdir, "ages", "--sort", "active", "--format", "json"])
+            result = runner.invoke(main, [
+                "--repo", tmpdir, "ages",
+                "--sort", "active", "--format", "json",
+            ])
             assert result.exit_code == 0
             data = json.loads(result.output)
             assert isinstance(data, list)

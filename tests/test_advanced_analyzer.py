@@ -4,12 +4,10 @@ from __future__ import annotations
 
 import shutil
 
-import pytest
-
 from git_archaeologist.analyzer import Analyzer
 from tests.helpers import (
-    create_coupling_repo,
     create_bus_factor_repo,
+    create_coupling_repo,
     create_multi_dir_repo,
     create_test_repo,
 )
@@ -47,7 +45,6 @@ class TestCoupling:
         """耦合强度应该在 0~1 之间。"""
         tmpdir, repo = create_coupling_repo()
         try:
-            analyzer = tmpdir
             a = Analyzer(tmpdir)
             result = a.coupling(min_co_change=1)
             for pair in result:

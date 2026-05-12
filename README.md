@@ -14,6 +14,7 @@
 - **🔥 热点文件** — 被修改最多的文件，支持 glob 模式过滤
 - **📅 活跃度趋势** — 按日/周/月/年统计 commit 活跃度
 - **📁 文件类型分布** — 按扩展名统计变更分布
+- **📋 一站式概览** — `summary` 命令汇总所有关键数据
 
 ### 高级分析
 - **🔗 文件耦合分析** — 找出经常一起被修改的文件对（co-change detection）
@@ -21,6 +22,7 @@
 - **🔄 Churn 分析** — 高变动率文件，识别反复重写的代码
 - **📂 目录级统计** — 按目录聚合变更、贡献者、文件数
 - **🕰️ 文件年龄分析** — 最陈旧/最早出现/最活跃的文件排序
+- **🗓️ Commit 热力图** — 按星期×小时分析提交活跃模式
 
 ### 输出
 - **🌐 HTML 报告** — 暗色主题的可浏览完整分析报告
@@ -46,6 +48,9 @@ pip install -e .
 # 仓库总体统计
 git-archaeologist stats
 
+# 一站式仓库概览
+git-archaeologist summary
+
 # 贡献者排行
 git-archaeologist authors --top 10
 
@@ -57,6 +62,9 @@ git-archaeologist activity --period month
 
 # 文件类型分布
 git-archaeologist filetypes --top 10
+
+# Commit 热力图（星期 × 小时）
+git-archaeologist heatmap
 
 # 文件耦合分析（经常一起修改的文件对）
 git-archaeologist coupling --min-co-change 3 --top 10
@@ -92,6 +100,14 @@ analyzer = arch.analyzer
 coupling = analyzer.coupling(top_n=10)
 bus_factor = analyzer.bus_factor(entity="dir")
 churn = analyzer.churn(top_n=10)
+
+# Commit 热力图
+day_labels, hours, matrix = analyzer.commit_heatmap_matrix()
+
+# 文件级 diff 详情
+for commit, file_changes in miner.iter_commits_with_details():
+    for fc in file_changes:
+        print(f"{fc.path}: +{fc.insertions} -{fc.deletions}")
 ```
 
 ---
@@ -101,11 +117,11 @@ churn = analyzer.churn(top_n=10)
 ```
 src/git_archaeologist/
 ├── __init__.py      # 包导出
-├── git_mining.py    # Git 采矿引擎 — commit 遍历、数据提取
-├── analyzer.py      # 核心分析引擎 — 统计、热点、耦合、Bus Factor、Churn
+├── git_mining.py    # Git 采矿引擎 — commit 遍历、数据提取、文件级 diff
+├── analyzer.py      # 核心分析引擎 — 统计、热点、耦合、Bus Factor、Churn、热力图
 ├── core.py          # 统一 API 入口类 (GitArchaeologist)
 ├── report.py        # HTML 报告生成器
-└── cli.py           # CLI 子命令
+└── cli.py           # CLI 子命令（13 个）
 ```
 
 ---

@@ -12,10 +12,9 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 from datetime import datetime
 
-import pytest
-
 from helpers import create_test_repo
-from git_archaeologist.analyzer import Analyzer, AuthorStats, HotspotFile, RepoStats
+
+from git_archaeologist.analyzer import Analyzer, AuthorStats, HotspotFile
 
 
 class TestAnalyzer:

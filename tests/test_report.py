@@ -10,11 +10,10 @@ import tempfile
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 sys.path.insert(0, os.path.dirname(__file__))
 
-from pathlib import Path
 
-import pytest
 
 from helpers import create_test_repo
+
 from git_archaeologist.report import generate_html_report, save_html_report
 
 

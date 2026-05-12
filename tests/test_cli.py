@@ -14,10 +14,8 @@ sys.path.insert(0, os.path.dirname(__file__))
 from pathlib import Path
 
 from click.testing import CliRunner
-
-import pytest
-
 from helpers import create_test_repo
+
 from git_archaeologist.cli import main
 
 

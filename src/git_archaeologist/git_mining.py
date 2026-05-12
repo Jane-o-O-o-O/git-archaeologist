@@ -111,6 +111,69 @@ class GitMiner:
             deletions=stats.get("deletions", 0),
         )
 
+    def get_file_diff_details(self, commit_sha: str) -> list[FileChange]:
+        """获取单个 commit 中每个文件的精确 insertions/deletions。
+
+        Args:
+            commit_sha: commit 的 SHA 值
+
+        Returns:
+            FileChange 列表，每个文件一个条目
+        """
+        commit = self.repo.commit(commit_sha)
+        changes: list[FileChange] = []
+        for fpath, detail in commit.stats.files.items():
+            changes.append(
+                FileChange(
+                    path=fpath,
+                    insertions=detail.get("insertions", 0),
+                    deletions=detail.get("deletions", 0),
+                    change_type=detail.get("change_type", "M"),
+                )
+            )
+        return changes
+
+    def iter_commits_with_details(
+        self,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        author: str | None = None,
+        path: str | None = None,
+        max_count: int | None = None,
+    ) -> Iterator[tuple[CommitInfo, list[FileChange]]]:
+        """遍历 commit 历史并附带每个文件的精确 diff 详情。
+
+        Yields:
+            (CommitInfo, [FileChange, ...]) 元组
+        """
+        if not self.has_commits:
+            return
+
+        kwargs: dict = {}
+        if since:
+            kwargs["since"] = since.isoformat()
+        if until:
+            kwargs["until"] = until.isoformat()
+        if author:
+            kwargs["author"] = author
+        if path:
+            kwargs["paths"] = path
+        if max_count:
+            kwargs["max_count"] = max_count
+
+        for commit in self.repo.iter_commits(**kwargs):
+            info = self._parse_commit(commit)
+            file_changes: list[FileChange] = []
+            for fpath, detail in commit.stats.files.items():
+                file_changes.append(
+                    FileChange(
+                        path=fpath,
+                        insertions=detail.get("insertions", 0),
+                        deletions=detail.get("deletions", 0),
+                    )
+                )
+            yield info, file_changes
+
     def get_file_history(
         self, file_path: str, max_count: int | None = None
     ) -> list[CommitInfo]:

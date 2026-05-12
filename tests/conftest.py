@@ -60,7 +60,7 @@ def create_test_repo(
     return tmpdir, repo
 
 
-import pytest
+import pytest  # noqa: E402
 
 
 @pytest.fixture

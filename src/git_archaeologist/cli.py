@@ -1,11 +1,9 @@
-"""CLI 子命令 — stats, authors, hotspots, activity, filetypes, report, coupling, busfactor, churn, dirs, ages。"""
+"""CLI 子命令 — stats, authors, hotspots, activity, filetypes 等。"""
 
 from __future__ import annotations
 
 import json
-import sys
 from datetime import datetime, timedelta
-from pathlib import Path
 
 import click
 from rich.console import Console
@@ -653,3 +651,141 @@ def ages_cmd(
 
 if __name__ == "__main__":
     main()
+
+
+@main.command()
+@click.option("--since", default=None, help="起始时间")
+@click.option("--until", default=None, help="结束时间")
+@click.option("--format", "fmt", type=click.Choice(["table", "json"]), default="table")
+@click.pass_context
+def heatmap(ctx: click.Context, since: str | None, until: str | None, fmt: str) -> None:
+    """🗓️ Commit 热力图 — 按星期×小时分析活跃模式"""
+    analyzer: Analyzer = ctx.obj["analyzer"]
+    heatmap_data = analyzer.commit_heatmap(since=_parse_since(since), until=_parse_since(until))
+
+    if fmt == "json":
+        click.echo(json.dumps(heatmap_data, ensure_ascii=False, indent=2))
+        return
+
+    days = list(heatmap_data.keys())
+    hours = [f"{h:02d}" for h in range(24)]
+
+    # 找到最大值用于颜色映射
+    max_val = 0
+    for day_data in heatmap_data.values():
+        for v in day_data.values():
+            max_val = max(max_val, v)
+    if max_val == 0:
+        console.print("[dim]无数据[/]")
+        return
+
+    # 终端热力图表格
+    table = Table(title="🗓️ Commit 热力图（星期 × 小时）", show_lines=False)
+    table.add_column("时段", style="dim", width=6)
+    for h in hours:
+        table.add_column(h, justify="center", width=3)
+
+    intensity_styles = ["dim", "", "green", "bold green", "bold yellow", "bold red"]
+
+    for day in days:
+        row = [day[:3]]
+        for h in hours:
+            val = heatmap_data[day][h]
+            if val == 0:
+                row.append("[dim]·[/]")
+            else:
+                ratio = val / max_val
+                level = min(int(ratio * 5), 5)
+                style = intensity_styles[level]
+                if style:
+                    row.append(f"[{style}]{val}[/]")
+                else:
+                    row.append(str(val))
+        table.add_row(*row)
+
+    console.print(table)
+
+    # 汇总统计
+    total = sum(v for d in heatmap_data.values() for v in d.values())
+    peak_day = max(days, key=lambda d: sum(heatmap_data[d].values()))
+    peak_hour = max(hours, key=lambda h: sum(heatmap_data[d][h] for d in days))
+    console.print(
+        f"\n[dim]总计 {total} 个 commit"
+        f" | 最活跃日: {peak_day}"
+        f" | 最活跃时: {peak_hour}:00[/]"
+    )
+
+
+@main.command()
+@click.option("--since", default=None, help="起始时间")
+@click.option("--until", default=None, help="结束时间")
+@click.option("--format", "fmt", type=click.Choice(["table", "json"]), default="table")
+@click.pass_context
+def summary(ctx: click.Context, since: str | None, until: str | None, fmt: str) -> None:
+    """📋 一站式仓库分析概览"""
+    from git_archaeologist.core import GitArchaeologist
+
+    repo: str = ctx.obj["repo"]
+    arch = GitArchaeologist(repo)
+    s = arch.summary(since=_parse_since(since), until=_parse_since(until))
+
+    if fmt == "json":
+        click.echo(json.dumps(s.to_dict(), ensure_ascii=False, indent=2))
+        return
+
+    # 仓库统计卡片
+    stats = s.stats
+    table = Table(title="📋 仓库概览", show_lines=True)
+    table.add_column("指标", style="cyan")
+    table.add_column("值", style="green", justify="right")
+    table.add_row("总 Commits", _format_number(stats.total_commits))
+    table.add_row("贡献者数", _format_number(stats.total_authors))
+    table.add_row("涉及文件数", _format_number(stats.total_files_changed))
+    table.add_row("总新增行数", f"[green]+{_format_number(stats.total_insertions)}[/]")
+    table.add_row("总删除行数", f"[red]-{_format_number(stats.total_deletions)}[/]")
+    table.add_row("净变更行数", _format_number(stats.total_insertions - stats.total_deletions))
+    if stats.first_commit_date:
+        table.add_row("首次提交", stats.first_commit_date.strftime("%Y-%m-%d"))
+    if stats.last_commit_date:
+        table.add_row("最后提交", stats.last_commit_date.strftime("%Y-%m-%d"))
+    table.add_row("活跃天数", _format_number(stats.active_days))
+    table.add_row("日均 Commits", str(stats.avg_commits_per_day))
+    console.print(table)
+
+    # Top 贡献者
+    if s.top_authors:
+        console.print()
+        authors_table = Table(title="👤 Top 贡献者", show_lines=True)
+        authors_table.add_column("#", style="dim", width=4)
+        authors_table.add_column("作者", style="cyan")
+        authors_table.add_column("Commits", justify="right")
+        authors_table.add_column("新增行", justify="right", style="green")
+        authors_table.add_column("删除行", justify="right", style="red")
+        for i, a in enumerate(s.top_authors[:5], 1):
+            authors_table.add_row(
+                str(i), a.name, str(a.commit_count),
+                f"+{_format_number(a.insertions)}", f"-{_format_number(a.deletions)}",
+            )
+        console.print(authors_table)
+
+    # Top 热点文件
+    if s.top_hotspots:
+        console.print()
+        hotspots_table = Table(title="🔥 Top 热点文件", show_lines=True)
+        hotspots_table.add_column("#", style="dim", width=4)
+        hotspots_table.add_column("文件", style="cyan", max_width=50)
+        hotspots_table.add_column("修改次数", justify="right", style="bold yellow")
+        for i, f in enumerate(s.top_hotspots[:5], 1):
+            hotspots_table.add_row(str(i), f.path, str(f.change_count))
+        console.print(hotspots_table)
+
+    # 文件类型
+    if s.file_types:
+        console.print()
+        ft_table = Table(title="📁 文件类型 Top 5", show_lines=True)
+        ft_table.add_column("扩展名", style="cyan")
+        ft_table.add_column("文件数", justify="right")
+        ft_table.add_column("变更次数", justify="right", style="bold yellow")
+        for ft in s.file_types[:5]:
+            ft_table.add_row(ft.extension, str(ft.file_count), str(ft.total_changes))
+        console.print(ft_table)
