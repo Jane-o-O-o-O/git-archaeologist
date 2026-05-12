@@ -1,8 +1,23 @@
 """测试 CLI 命令行接口"""
+import json
 import subprocess
 import pytest
 
-from git_archaeologist.cli import build_report, format_fossil, format_stratum, format_hotspot, format_author_stats
+from git_archaeologist.cli import build_report, _parse_format
+from git_archaeologist.output import OutputFormat
+
+
+class TestParseFormat:
+    """格式解析测试"""
+
+    def test_json(self):
+        assert _parse_format("json") == OutputFormat.JSON
+
+    def test_terminal(self):
+        assert _parse_format("terminal") == OutputFormat.TERMINAL
+
+    def test_default(self):
+        assert _parse_format("anything") == OutputFormat.TERMINAL
 
 
 class TestCLIHelpers:
@@ -32,7 +47,7 @@ class TestCLIHelpers:
         from git_archaeologist.repo import Repo
         repo = Repo(str(repo_dir))
         report = build_report(repo)
-        assert "3" in report  # 3 commits
+        assert "3" in report
 
     def test_build_report_has_contributors(self, tmp_path):
         repo_dir = self._make_repo(tmp_path)
@@ -55,64 +70,32 @@ class TestCLIHelpers:
         report = build_report(repo)
         assert "贡献者统计" in report
 
-    def test_format_fossil(self):
-        from git_archaeologist.fossils import Fossil
-        from datetime import datetime
-        fossil = Fossil(
-            path="old/file.py",
-            name="file.py",
-            last_modified=datetime(2020, 1, 1),
-            age_days=2000,
-        )
-        result = format_fossil(fossil)
-        assert "file.py" in result
-        assert "2000" in result
+    def test_build_report_json_format(self, tmp_path):
+        """测试：JSON 格式报告应为有效 JSON"""
+        repo_dir = self._make_repo(tmp_path)
+        from git_archaeologist.repo import Repo
+        repo = Repo(str(repo_dir))
+        report = build_report(repo, fmt=OutputFormat.JSON)
+        data = json.loads(report)
+        assert "summary" in data
+        assert "hotspots" in data
+        assert "fossils" in data
+        assert "strata" in data
+        assert "authors" in data
 
-    def test_format_stratum(self):
-        from git_archaeologist.strata import Stratum
-        from datetime import datetime
-        s = Stratum(
-            start_date=datetime(2024, 1, 1),
-            end_date=datetime(2024, 3, 1),
-            commit_count=50,
-            contributor_count=3,
-            contributors=["A", "B", "C"],
-        )
-        result = format_stratum(s)
-        assert "50" in result
-        assert "3" in result
+    def test_build_report_json_has_commit_count(self, tmp_path):
+        repo_dir = self._make_repo(tmp_path)
+        from git_archaeologist.repo import Repo
+        repo = Repo(str(repo_dir))
+        report = build_report(repo, fmt=OutputFormat.JSON)
+        data = json.loads(report)
+        assert data["summary"]["commit_count"] == 3
 
-    def test_format_hotspot(self):
-        from git_archaeologist.hotspots import HotspotFile
-        from datetime import datetime
-        h = HotspotFile(
-            path="src/main.py",
-            modification_count=42,
-            unique_authors=5,
-            first_seen=datetime(2023, 1, 1),
-            last_modified=datetime(2024, 6, 1),
-        )
-        result = format_hotspot(h)
-        assert "src/main.py" in result
-        assert "42" in result
-        assert "5" in result
-
-    def test_format_author_stats(self):
-        from git_archaeologist.authors import AuthorStats
-        from datetime import datetime
-        a = AuthorStats(
-            name="Alice",
-            email="alice@test.com",
-            commit_count=10,
-            first_commit=datetime(2023, 1, 1),
-            last_commit=datetime(2024, 6, 1),
-            files_touched=15,
-            lines_added=500,
-            lines_removed=200,
-        )
-        result = format_author_stats(a)
-        assert "Alice" in result
-        assert "alice@test.com" in result
-        assert "10" in result
-        assert "+500" in result
-        assert "-200" in result
+    def test_build_report_json_has_contributors(self, tmp_path):
+        repo_dir = self._make_repo(tmp_path)
+        from git_archaeologist.repo import Repo
+        repo = Repo(str(repo_dir))
+        report = build_report(repo, fmt=OutputFormat.JSON)
+        data = json.loads(report)
+        assert data["summary"]["contributor_count"] >= 1
+        assert any("Tester" in c for c in data["summary"]["contributors"])
