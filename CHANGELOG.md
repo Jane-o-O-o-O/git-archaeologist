@@ -4,6 +4,21 @@
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
+## [0.6.0] - 2026-05-13
+
+### 新增
+- **代码归属分析** (`blame`)：基于 git blame 查看每行代码的作者归属，识别独占文件
+- **复杂度趋势** (`complexity`)：追踪 LOC、文件数随时间的变化趋势，支持 week/month/quarter/year 周期
+- **时段对比** (`diff`)：比较两个时间段的指标变化，识别新增/离开贡献者
+- **`--version` 标志**：查看当前版本号
+- **`--output` / `-o` 选项**：所有新命令支持输出到文件
+- **3 个新 dataclass**：`BlameEntry`、`ComplexityPoint`、`PeriodDiff`
+- **34 个新测试**，总计 185 个测试全部通过
+
+### 改进
+- 版本号统一为 0.6.0（pyproject.toml + __init__.py）
+- CLI 子命令从 15 个增至 18 个
+
 ## [0.4.0] - 2026-05-12
 
 ### 新增

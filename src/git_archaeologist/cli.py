@@ -6,14 +6,32 @@ import csv
 import io
 import json
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import click
 from rich.console import Console
 from rich.table import Table
 
 from git_archaeologist.analyzer import Analyzer
+from git_archaeologist import __version__
 
 console = Console()
+
+
+def _write_output(content: str, output: str | None) -> None:
+    """输出到文件或 stdout。"""
+    if output:
+        Path(output).write_text(content, encoding="utf-8")
+        console.print(f"[green]✅ 已写入: {output}[/]")
+    else:
+        click.echo(content)
+
+
+def output_option(f):
+    """为命令添加 --output/-o 选项的装饰器。"""
+    return click.option(
+        "--output", "-o", default=None, help="输出到文件（默认 stdout）"
+    )(f)
 
 
 def _output_csv(headers: list[str], rows: list[list[str]]) -> str:
@@ -62,6 +80,7 @@ def _format_number(n: int) -> str:
 
 
 @click.group()
+@click.version_option(version=__version__, prog_name="git-archaeologist")
 @click.option("--repo", default=".", help="仓库路径", envvar="GIT_ARCH_REPO")
 @click.pass_context
 def main(ctx: click.Context, repo: str) -> None:
@@ -1014,3 +1033,271 @@ def commit_messages(ctx: click.Context, since: str | None, until: str | None, fm
         for word, count in result.most_common_words[:10]:
             word_table.add_row(word, str(count))
         console.print(word_table)
+
+
+# ── v0.6.0 新增子命令 ────────────────────────────────────────────
+
+
+@main.command()
+@click.option("--top", default=20, help="显示前 N 个文件")
+@click.option("--rev", default="HEAD", help="Git revision（默认 HEAD）")
+@click.option(
+    "--format",
+    "fmt",
+    type=click.Choice(["table", "json", "csv", "markdown"]),
+    default="table",
+)
+@output_option
+@click.pass_context
+def blame(ctx: click.Context, top: int, rev: str, fmt: str, output: str | None) -> None:
+    """🔍 代码归属分析 — 基于 git blame 查看每行代码的作者"""
+    analyzer: Analyzer = ctx.obj["analyzer"]
+    result = analyzer.blame_analysis(top_n=top, rev=rev)
+
+    if fmt == "json":
+        data = [
+            {
+                "path": e.path,
+                "total_lines": e.total_lines,
+                "top_author": e.top_author,
+                "top_author_lines": e.top_author_lines,
+                "top_author_pct": e.top_author_pct,
+                "authors": e.authors,
+                "oldest_line": e.oldest_line_date.isoformat() if e.oldest_line_date else None,
+                "newest_line": e.newest_line_date.isoformat() if e.newest_line_date else None,
+            }
+            for e in result
+        ]
+        _write_output(json.dumps(data, ensure_ascii=False, indent=2), output)
+        return
+
+    if fmt == "csv":
+        headers = ["path", "total_lines", "top_author", "top_author_lines", "top_author_pct"]
+        rows = [
+            [e.path, e.total_lines, e.top_author, e.top_author_lines, e.top_author_pct]
+            for e in result
+        ]
+        _write_output(_output_csv(headers, rows), output)
+        return
+
+    if fmt == "markdown":
+        headers = ["#", "文件路径", "总行数", "主要作者", "行数", "占比"]
+        rows = [
+            [
+                str(i),
+                e.path,
+                str(e.total_lines),
+                e.top_author,
+                str(e.top_author_lines),
+                f"{e.top_author_pct:.0f}%",
+            ]
+            for i, e in enumerate(result, 1)
+        ]
+        _write_output(_output_markdown_table(headers, rows), output)
+        return
+
+    if not result:
+        console.print("[dim]无 blame 数据[/]")
+        return
+
+    table = Table(title="🔍 代码归属（git blame）", show_lines=True)
+    table.add_column("#", style="dim", width=4)
+    table.add_column("文件路径", style="cyan", max_width=50)
+    table.add_column("总行数", justify="right")
+    table.add_column("主要作者", style="bold")
+    table.add_column("行数", justify="right", style="bold yellow")
+    table.add_column("占比", justify="right")
+    table.add_column("作者数", justify="right")
+
+    for i, e in enumerate(result, 1):
+        risk = "[red]⚠ 独占[/]" if e.top_author_pct > 80 else ""
+        table.add_row(
+            str(i),
+            e.path,
+            str(e.total_lines),
+            e.top_author,
+            str(e.top_author_lines),
+            f"{e.top_author_pct:.0f}% {risk}",
+            str(len(e.authors)),
+        )
+    console.print(table)
+
+
+@main.command()
+@click.option("--since", default=None, help="起始时间")
+@click.option("--until", default=None, help="结束时间")
+@click.option(
+    "--period",
+    type=click.Choice(["week", "month", "quarter", "year"]),
+    default="month",
+    help="统计周期",
+)
+@click.option(
+    "--format",
+    "fmt",
+    type=click.Choice(["table", "json", "csv", "markdown"]),
+    default="table",
+)
+@output_option
+@click.pass_context
+def complexity(
+    ctx: click.Context,
+    since: str | None,
+    until: str | None,
+    period: str,
+    fmt: str,
+    output: str | None,
+) -> None:
+    """📈 代码复杂度趋势 — 追踪 LOC、文件数随时间变化"""
+    analyzer: Analyzer = ctx.obj["analyzer"]
+    result = analyzer.complexity_trend(
+        period=period, since=_parse_since(since), until=_parse_since(until)
+    )
+
+    if fmt == "json":
+        data = [
+            {
+                "period": p.period,
+                "total_files": p.total_files,
+                "total_lines": p.total_lines,
+                "commits_in_period": p.commits_in_period,
+                "net_lines_added": p.net_lines_added,
+            }
+            for p in result
+        ]
+        _write_output(json.dumps(data, ensure_ascii=False, indent=2), output)
+        return
+
+    if fmt == "csv":
+        headers = ["period", "total_files", "total_lines", "commits", "net_lines"]
+        rows = [
+            [p.period, p.total_files, p.total_lines, p.commits_in_period, p.net_lines_added]
+            for p in result
+        ]
+        _write_output(_output_csv(headers, rows), output)
+        return
+
+    if not result:
+        console.print("[dim]无复杂度数据[/]")
+        return
+
+    max_lines = max(p.total_lines for p in result) or 1
+    table = Table(title=f"📈 代码复杂度趋势（按{period}）", show_lines=True)
+    table.add_column("时间段", style="cyan")
+    table.add_column("文件数", justify="right")
+    table.add_column("总行数", justify="right", style="bold yellow")
+    table.add_column("趋势", style="green")
+    table.add_column("Commits", justify="right")
+    table.add_column("净增行数", justify="right")
+
+    for p in result:
+        bar_len = int(p.total_lines / max_lines * 30)
+        bar = "█" * bar_len
+        net_style = "green" if p.net_lines_added >= 0 else "red"
+        table.add_row(
+            p.period,
+            str(p.total_files),
+            _format_number(p.total_lines),
+            bar,
+            str(p.commits_in_period),
+            f"[{net_style}]{p.net_lines_added:+d}[/]",
+        )
+    console.print(table)
+
+
+@main.command("diff")
+@click.option("--a-since", required=True, help="时间段 A 起始")
+@click.option("--a-until", required=True, help="时间段 A 结束")
+@click.option("--b-since", required=True, help="时间段 B 起始")
+@click.option("--b-until", required=True, help="时间段 B 结束")
+@click.option(
+    "--format",
+    "fmt",
+    type=click.Choice(["table", "json", "csv"]),
+    default="table",
+)
+@output_option
+@click.pass_context
+def diff_cmd(
+    ctx: click.Context,
+    a_since: str,
+    a_until: str,
+    b_since: str,
+    b_until: str,
+    fmt: str,
+    output: str | None,
+) -> None:
+    """⚖️ 时段对比 — 比较两个时间段的指标变化"""
+    analyzer: Analyzer = ctx.obj["analyzer"]
+    result = analyzer.period_diff(
+        period_a_since=_parse_since(a_since),
+        period_a_until=_parse_since(a_until),
+        period_b_since=_parse_since(b_since),
+        period_b_until=_parse_since(b_until),
+    )
+
+    if fmt == "json":
+        data = {
+            "period_a_commits": result.period_a_commits,
+            "period_b_commits": result.period_b_commits,
+            "commits_change": result.commits_change,
+            "period_a_authors": result.period_a_authors,
+            "period_b_authors": result.period_b_authors,
+            "authors_change": result.authors_change,
+            "period_a_files": result.period_a_files,
+            "period_b_files": result.period_b_files,
+            "files_change": result.files_change,
+            "period_a_insertions": result.period_a_insertions,
+            "period_b_insertions": result.period_b_insertions,
+            "period_a_deletions": result.period_a_deletions,
+            "period_b_deletions": result.period_b_deletions,
+            "new_authors": result.new_authors,
+            "departed_authors": result.departed_authors,
+            "most_changed_files": result.most_changed_files,
+        }
+        _write_output(json.dumps(data, ensure_ascii=False, indent=2), output)
+        return
+
+    if fmt == "csv":
+        headers = ["metric", "period_a", "period_b", "change_pct"]
+        rows = [
+            ["commits", result.period_a_commits, result.period_b_commits, f"{result.commits_change:.1f}%"],
+            ["authors", result.period_a_authors, result.period_b_authors, f"{result.authors_change:.1f}%"],
+            ["files", result.period_a_files, result.period_b_files, f"{result.files_change:.1f}%"],
+        ]
+        _write_output(_output_csv(headers, rows), output)
+        return
+
+    def _pct_str(pct: float) -> str:
+        if pct > 0:
+            return f"[green]+{pct:.1f}%[/]"
+        elif pct < 0:
+            return f"[red]{pct:.1f}%[/]"
+        return f"{pct:.1f}%"
+
+    table = Table(title="⚖️ 时段对比", show_lines=True)
+    table.add_column("指标", style="cyan")
+    table.add_column("时段 A", justify="right")
+    table.add_column("时段 B", justify="right")
+    table.add_column("变化", justify="right")
+
+    table.add_row("Commits", str(result.period_a_commits), str(result.period_b_commits),
+                   _pct_str(result.commits_change))
+    table.add_row("贡献者", str(result.period_a_authors), str(result.period_b_authors),
+                   _pct_str(result.authors_change))
+    table.add_row("涉及文件", str(result.period_a_files), str(result.period_b_files),
+                   _pct_str(result.files_change))
+    table.add_row("新增行", _format_number(result.period_a_insertions),
+                   _format_number(result.period_b_insertions), "")
+    table.add_row("删除行", _format_number(result.period_a_deletions),
+                   _format_number(result.period_b_deletions), "")
+    console.print(table)
+
+    if result.new_authors:
+        console.print(f"\n[green]🆕 新增贡献者: {', '.join(result.new_authors)}[/]")
+    if result.departed_authors:
+        console.print(f"[red]👋 离开贡献者: {', '.join(result.departed_authors)}[/]")
+    if result.most_changed_files:
+        console.print("\n[bold]📊 变化最大的文件:[/]")
+        for fpath, count in result.most_changed_files[:5]:
+            console.print(f"  {fpath} ({count} 次变更)")

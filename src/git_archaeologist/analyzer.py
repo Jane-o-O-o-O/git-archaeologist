@@ -176,6 +176,53 @@ class CommitMessageStats:
     most_common_words: list[tuple[str, int]] = field(default_factory=list)
 
 
+@dataclass
+class BlameEntry:
+    """文件 blame 分析结果。"""
+
+    path: str
+    total_lines: int = 0
+    top_author: str = ""
+    top_author_lines: int = 0
+    top_author_pct: float = 0.0
+    authors: dict[str, int] = field(default_factory=dict)
+    oldest_line_date: datetime | None = None
+    newest_line_date: datetime | None = None
+
+
+@dataclass
+class ComplexityPoint:
+    """复杂度趋势数据点。"""
+
+    period: str
+    total_files: int = 0
+    total_lines: int = 0
+    commits_in_period: int = 0
+    net_lines_added: int = 0
+
+
+@dataclass
+class PeriodDiff:
+    """两个时间段的对比结果。"""
+
+    period_a_commits: int = 0
+    period_b_commits: int = 0
+    commits_change: float = 0.0
+    period_a_authors: int = 0
+    period_b_authors: int = 0
+    authors_change: float = 0.0
+    period_a_files: int = 0
+    period_b_files: int = 0
+    files_change: float = 0.0
+    period_a_insertions: int = 0
+    period_b_insertions: int = 0
+    period_a_deletions: int = 0
+    period_b_deletions: int = 0
+    new_authors: list[str] = field(default_factory=list)
+    departed_authors: list[str] = field(default_factory=list)
+    most_changed_files: list[tuple[str, int]] = field(default_factory=list)
+
+
 class Analyzer:
     """仓库分析器。"""
 
@@ -822,4 +869,216 @@ class Analyzer:
             short_messages=short_count,
             long_messages=long_count,
             most_common_words=words.most_common(20),
+        )
+
+    # ── 新增分析方法 ────────────────────────────────────────────
+
+    def blame_analysis(
+        self,
+        top_n: int = 20,
+        rev: str = "HEAD",
+    ) -> list[BlameEntry]:
+        """对仓库中每个跟踪文件执行 blame 分析，统计每行归属作者。
+
+        Args:
+            top_n: 返回前 N 个文件的结果。
+            rev: 要分析的 revision，默认 HEAD。
+
+        Returns:
+            BlameEntry 列表，按总行数降序排列。
+        """
+        # 收集所有跟踪过的文件路径
+        tracked_files: set[str] = set()
+        for c in self.miner.iter_commits():
+            tracked_files.update(c.files_changed)
+
+        results: list[BlameEntry] = []
+        for fpath in sorted(tracked_files):
+            try:
+                blame_data = self.miner.repo.blame(rev, fpath)
+            except Exception:
+                # 文件在当前 revision 可能不存在、或是二进制文件等
+                continue
+
+            author_lines: Counter[str] = Counter()
+            total_lines = 0
+            oldest_date: datetime | None = None
+            newest_date: datetime | None = None
+
+            for commit, lines in blame_data:
+                author = f"{commit.author.name} <{commit.author.email}>"
+                line_count = len(lines)
+                author_lines[author] += line_count
+                total_lines += line_count
+
+                commit_date = datetime.fromtimestamp(commit.committed_date)
+                if oldest_date is None or commit_date < oldest_date:
+                    oldest_date = commit_date
+                if newest_date is None or commit_date > newest_date:
+                    newest_date = commit_date
+
+            if total_lines == 0:
+                continue
+
+            top_author, top_author_count = author_lines.most_common(1)[0]
+            entry = BlameEntry(
+                path=fpath,
+                total_lines=total_lines,
+                top_author=top_author,
+                top_author_lines=top_author_count,
+                top_author_pct=round(top_author_count / total_lines * 100, 1),
+                authors=dict(author_lines),
+                oldest_line_date=oldest_date,
+                newest_line_date=newest_date,
+            )
+            results.append(entry)
+
+        results.sort(key=lambda e: e.total_lines, reverse=True)
+        return results[:top_n]
+
+    def complexity_trend(
+        self,
+        period: str = "month",
+        since: datetime | None = None,
+        until: datetime | None = None,
+    ) -> list[ComplexityPoint]:
+        """按时间周期追踪代码复杂度趋势（累计文件数、LOC 等）。
+
+        Args:
+            period: 分桶粒度，支持 ``"week"``、``"month"``、``"quarter"``、``"year"``。
+            since: 起始时间。
+            until: 截止时间。
+
+        Returns:
+            ComplexityPoint 列表，按时间升序。
+        """
+        # 格式化周期 key
+        fmt_map = {
+            "week": "%Y-W%W",
+            "month": "%Y-%m",
+            "quarter": "%Y-Q",  # 需要特殊处理
+            "year": "%Y",
+        }
+        fmt = fmt_map.get(period, "%Y-%m")
+
+        def _period_key(dt: datetime) -> str:
+            if period == "quarter":
+                q = (dt.month - 1) // 3 + 1
+                return f"{dt.year}-Q{q}"
+            return dt.strftime(fmt)
+
+        # 按 period 桶收集 commit
+        buckets: dict[str, list] = defaultdict(list)
+        for c, file_changes in self.miner.iter_commits_with_details(
+            since=since, until=until,
+        ):
+            key = _period_key(c.authored_date)
+            buckets[key].append((c, file_changes))
+
+        # 按时间排序，累加计算
+        sorted_keys = sorted(buckets.keys())
+        cumulative_files: set[str] = set()
+        cumulative_lines = 0
+        results: list[ComplexityPoint] = []
+
+        for key in sorted_keys:
+            entries = buckets[key]
+            period_files: set[str] = set()
+            period_ins = 0
+            period_del = 0
+            commit_count = len(entries)
+
+            for c, file_changes in entries:
+                if file_changes:
+                    for fc in file_changes:
+                        period_files.add(fc.path)
+                        period_ins += fc.insertions
+                        period_del += fc.deletions
+                else:
+                    # 回退到 commit 级别数据
+                    for f in c.files_changed:
+                        period_files.add(f)
+                    period_ins += c.insertions
+                    period_del += c.deletions
+
+            cumulative_files.update(period_files)
+            net = period_ins - period_del
+            cumulative_lines += net
+
+            results.append(
+                ComplexityPoint(
+                    period=key,
+                    total_files=len(cumulative_files),
+                    total_lines=cumulative_lines,
+                    commits_in_period=commit_count,
+                    net_lines_added=net,
+                )
+            )
+
+        return results
+
+    def period_diff(
+        self,
+        period_a_since: datetime,
+        period_a_until: datetime,
+        period_b_since: datetime,
+        period_b_until: datetime,
+    ) -> PeriodDiff:
+        """对比两个时间段的活动差异。
+
+        Args:
+            period_a_since: 时段 A 起始时间。
+            period_a_until: 时段 A 截止时间。
+            period_b_since: 时段 B 起始时间。
+            period_b_until: 时段 B 截止时间。
+
+        Returns:
+            PeriodDiff 包含两个时段的统计及差异。
+        """
+        stats_a = self.repo_stats(since=period_a_since, until=period_a_until)
+        stats_b = self.repo_stats(since=period_b_since, until=period_b_until)
+
+        def _pct_change(a: int, b: int) -> float:
+            if a == 0:
+                return 0.0 if b == 0 else 100.0
+            return round((b - a) / a * 100, 1)
+
+        # 收集每个时段的作者集合
+        authors_a: set[str] = set()
+        authors_b: set[str] = set()
+        file_change_counts: Counter[str] = Counter()
+
+        for c in self.miner.iter_commits(since=period_a_since, until=period_a_until):
+            authors_a.add(f"{c.author_name} <{c.author_email}>")
+            for f in c.files_changed:
+                file_change_counts[f] += 1
+
+        for c in self.miner.iter_commits(since=period_b_since, until=period_b_until):
+            authors_b.add(f"{c.author_name} <{c.author_email}>")
+            for f in c.files_changed:
+                file_change_counts[f] += 1
+
+        new_authors = sorted(authors_b - authors_a)
+        departed_authors = sorted(authors_a - authors_b)
+        most_changed = file_change_counts.most_common(20)
+
+        return PeriodDiff(
+            period_a_commits=stats_a.total_commits,
+            period_b_commits=stats_b.total_commits,
+            commits_change=_pct_change(stats_a.total_commits, stats_b.total_commits),
+            period_a_authors=stats_a.total_authors,
+            period_b_authors=stats_b.total_authors,
+            authors_change=_pct_change(stats_a.total_authors, stats_b.total_authors),
+            period_a_files=stats_a.total_files_changed,
+            period_b_files=stats_b.total_files_changed,
+            files_change=_pct_change(
+                stats_a.total_files_changed, stats_b.total_files_changed,
+            ),
+            period_a_insertions=stats_a.total_insertions,
+            period_b_insertions=stats_b.total_insertions,
+            period_a_deletions=stats_a.total_deletions,
+            period_b_deletions=stats_b.total_deletions,
+            new_authors=new_authors,
+            departed_authors=departed_authors,
+            most_changed_files=most_changed,
         )

@@ -23,11 +23,20 @@
 - **📂 目录级统计** — 按目录聚合变更、贡献者、文件数
 - **🕰️ 文件年龄分析** — 最陈旧/最早出现/最活跃的文件排序
 - **🗓️ Commit 热力图** — 按星期×小时分析提交活跃模式
+- **🏥 健康评分** — Bus Factor/Churn/Activity/Diversity 四维评估
+- **💬 Commit 消息分析** — conventional commits 检测、消息质量统计
+
+### v0.6.0 新增
+- **🔍 代码归属分析** — 基于 git blame 查看每行代码的作者归属
+- **📈 复杂度趋势** — 追踪 LOC、文件数随时间的变化趋势
+- **⚖️ 时段对比** — 比较两个时间段的指标变化，识别新增/离开贡献者
 
 ### 输出
 - **🌐 HTML 报告** — 暗色主题的可浏览完整分析报告
 - **📋 终端表格** — Rich 美化输出
 - **📄 JSON** — 所有命令支持 `--format json` 管道输出
+- **📊 CSV / Markdown** — 所有命令支持 `--format csv` 和 `--format markdown`
+- **📁 文件输出** — 所有命令支持 `--output` / `-o` 写入文件
 - **🐍 Python API** — `GitArchaeologist` 统一入口类
 
 ---
@@ -45,6 +54,9 @@ pip install -e .
 ### CLI 使用
 
 ```bash
+# 查看版本
+git-archaeologist --version
+
 # 仓库总体统计
 git-archaeologist stats
 
@@ -82,8 +94,29 @@ git-archaeologist dirs --top 10
 # 文件年龄分析
 git-archaeologist ages --sort stale --top 20
 
+# 代码归属分析（git blame）
+git-archaeologist blame --top 20
+
+# 复杂度趋势
+git-archaeologist complexity --period month
+
+# 时段对比
+git-archaeologist diff \
+    --a-since 2024-01-01 --a-until 2024-06-30 \
+    --b-since 2024-07-01 --b-until 2024-12-31
+
+# 健康评分
+git-archaeologist health
+
+# Commit 消息分析
+git-archaeologist commit-messages
+
 # 生成 HTML 报告
 git-archaeologist report -o report.html
+
+# 输出到文件（所有命令支持 -o）
+git-archaeologist stats --format json -o stats.json
+git-archaeologist authors --format csv -o authors.csv
 ```
 
 ### Python API
@@ -100,6 +133,25 @@ analyzer = arch.analyzer
 coupling = analyzer.coupling(top_n=10)
 bus_factor = analyzer.bus_factor(entity="dir")
 churn = analyzer.churn(top_n=10)
+
+# 代码归属分析
+blame = analyzer.blame_analysis(top_n=10)
+for entry in blame:
+    print(f"{entry.path}: {entry.top_author} ({entry.top_author_pct:.0f}%)")
+
+# 复杂度趋势
+trend = analyzer.complexity_trend(period="month")
+for point in trend:
+    print(f"{point.period}: {point.total_lines} LOC, {point.total_files} files")
+
+# 时段对比
+diff = analyzer.period_diff(
+    period_a_since=datetime(2024, 1, 1),
+    period_a_until=datetime(2024, 6, 30),
+    period_b_since=datetime(2024, 7, 1),
+    period_b_until=datetime(2024, 12, 31),
+)
+print(f"Commits: {diff.period_a_commits} → {diff.period_b_commits}")
 
 # Commit 热力图
 day_labels, hours, matrix = analyzer.commit_heatmap_matrix()
@@ -118,10 +170,10 @@ for commit, file_changes in miner.iter_commits_with_details():
 src/git_archaeologist/
 ├── __init__.py      # 包导出
 ├── git_mining.py    # Git 采矿引擎 — commit 遍历、数据提取、文件级 diff
-├── analyzer.py      # 核心分析引擎 — 统计、热点、耦合、Bus Factor、Churn、热力图
+├── analyzer.py      # 核心分析引擎 — 统计、热点、耦合、Bus Factor、Churn、热力图、blame、复杂度
 ├── core.py          # 统一 API 入口类 (GitArchaeologist)
 ├── report.py        # HTML 报告生成器
-└── cli.py           # CLI 子命令（13 个）
+└── cli.py           # CLI 子命令（18 个）
 ```
 
 ---
