@@ -31,6 +31,14 @@
 - **📈 复杂度趋势** — 追踪 LOC、文件数随时间的变化趋势
 - **⚖️ 时段对比** — 比较两个时间段的指标变化，识别新增/离开贡献者
 
+### v0.7.0 新增
+- **🏷️ 标签/版本列表** — 列出仓库标签及关联 commit，支持 annotated/lightweight 标签
+- **📜 文件修改历史** — 查看指定文件的 commit 变更记录
+- **🔍 Commit 消息搜索** — 正则表达式搜索 commit 消息
+- **📈 贡献者时间线** — 按时间维度统计贡献者数量变化、新增贡献者
+- **📅 Activity 增强** — 新增 `--filter-path` 和 `--filter-author` 过滤选项
+- **🌐 HTML 报告增强** — 健康评分、Churn、Bus Factor、耦合分析、热力图 5 个新章节
+
 ### 输出
 - **🌐 HTML 报告** — 暗色主题的可浏览完整分析报告
 - **📋 终端表格** — Rich 美化输出
@@ -111,7 +119,26 @@ git-archaeologist health
 # Commit 消息分析
 git-archaeologist commit-messages
 
-# 生成 HTML 报告
+# v0.7.0 新增命令
+
+# 标签/版本列表
+git-archaeologist tags
+
+# 文件修改历史
+git-archaeologist file-history src/main.py
+
+# 搜索 commit 消息（支持正则）
+git-archaeologist search "feat!?:"
+git-archaeologist search "fix.*bug" --since 6m
+
+# 贡献者时间线
+git-archaeologist contributors-timeline --period month
+
+# 活跃度趋势（带过滤）
+git-archaeologist activity --filter-author "Alice"
+git-archaeologist activity --filter-path "src/api.py"
+
+# 生成 HTML 报告（含健康评分、Churn、Bus Factor、耦合、热力图）
 git-archaeologist report -o report.html
 
 # 输出到文件（所有命令支持 -o）
@@ -156,6 +183,24 @@ print(f"Commits: {diff.period_a_commits} → {diff.period_b_commits}")
 # Commit 热力图
 day_labels, hours, matrix = analyzer.commit_heatmap_matrix()
 
+# 标签列表
+tags = analyzer.list_tags()
+for t in tags:
+    print(f"{t.name}: {t.commit_date}")
+
+# 文件修改历史
+history = analyzer.file_history("src/main.py", max_count=10)
+
+# 搜索 commit 消息
+results = analyzer.search_messages(r"feat!?:")
+for r in results:
+    print(f"{r.sha[:12]}: {r.message}")
+
+# 贡献者时间线
+timeline = analyzer.contributor_timeline(period="month")
+for p in timeline:
+    print(f"{p.period}: {p.total_contributors} contributors (+{p.new_contributors} new)")
+
 # 文件级 diff 详情
 for commit, file_changes in miner.iter_commits_with_details():
     for fc in file_changes:
@@ -173,7 +218,7 @@ src/git_archaeologist/
 ├── analyzer.py      # 核心分析引擎 — 统计、热点、耦合、Bus Factor、Churn、热力图、blame、复杂度
 ├── core.py          # 统一 API 入口类 (GitArchaeologist)
 ├── report.py        # HTML 报告生成器
-└── cli.py           # CLI 子命令（18 个）
+└── cli.py           # CLI 子命令（22 个）
 ```
 
 ---

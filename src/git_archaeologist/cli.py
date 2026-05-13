@@ -79,6 +79,34 @@ def _format_number(n: int) -> str:
     return f"{n:,}"
 
 
+# ── 公共选项装饰器 ─────────────────────────────────────────────────
+
+def time_filter_options(f):
+    """为命令添加 --since/--until 时间过滤选项。"""
+    f = click.option("--since", default=None, help="起始时间 (YYYY-MM-DD 或 1y/6m/30d)")(f)
+    f = click.option("--until", default=None, help="结束时间")(f)
+    return f
+
+
+def author_filter_option(f):
+    """为命令添加 --author 过滤选项。"""
+    return click.option("--author", default=None, help="按作者过滤（匹配 name 或 email）")(f)
+
+
+def path_filter_option(f):
+    """为命令添加 --path 过滤选项。"""
+    return click.option("--path", "filter_path", default=None, help="按文件路径过滤")(f)
+
+
+def format_option(f):
+    """为命令添加 --format 选项。"""
+    return click.option(
+        "--format", "fmt",
+        type=click.Choice(["table", "json", "csv", "markdown"]),
+        default="table",
+    )(f)
+
+
 @click.group()
 @click.version_option(version=__version__, prog_name="git-archaeologist")
 @click.option("--repo", default=".", help="仓库路径", envvar="GIT_ARCH_REPO")
@@ -297,51 +325,7 @@ def hotspots(
     console.print(table)
 
 
-@main.command()
-@click.option("--since", default=None, help="起始时间")
-@click.option("--until", default=None, help="结束时间")
-@click.option(
-    "--period",
-    type=click.Choice(["day", "week", "month", "year"]),
-    default="month",
-    help="统计周期",
-)
-@click.option("--format", "fmt", type=click.Choice(["table", "json", "csv", "markdown"]), default="table")
-@click.pass_context
-def activity(
-    ctx: click.Context, since: str | None, until: str | None, period: str, fmt: str
-) -> None:
-    """📅 Commit 活跃度趋势"""
-    analyzer: Analyzer = ctx.obj["analyzer"]
-    data = analyzer.commit_activity_by_period(
-        period=period, since=_parse_since(since), until=_parse_since(until)
-    )
-
-    if fmt == "json":
-        click.echo(json.dumps(data, ensure_ascii=False, indent=2))
-        return
-
-    if fmt == "csv":
-        headers = ["period", "commits"]
-        rows = [[k, v] for k, v in data.items()]
-        click.echo(_output_csv(headers, rows))
-        return
-
-    if not data:
-        console.print("[dim]无数据[/]")
-        return
-
-    max_val = max(data.values()) or 1
-    table = Table(title=f"📅 Commit 活跃度（按{period}）", show_lines=True)
-    table.add_column("时间段", style="cyan")
-    table.add_column("Commits", justify="right")
-    table.add_column("趋势", style="green")
-
-    for period_key, count in data.items():
-        bar_len = int(count / max_val * 30)
-        bar = "█" * bar_len
-        table.add_row(period_key, str(count), bar)
-    console.print(table)
+# (activity 命令已移至下方 v0.7.0 区域，支持 --path/--author 过滤)
 
 
 @main.command()
@@ -1301,3 +1285,389 @@ def diff_cmd(
         console.print("\n[bold]📊 变化最大的文件:[/]")
         for fpath, count in result.most_changed_files[:5]:
             console.print(f"  {fpath} ({count} 次变更)")
+
+
+# ── v0.7.0 新增子命令 ────────────────────────────────────────────
+
+
+@main.command("tags")
+@click.option("--top", default=30, help="显示前 N 个标签")
+@click.option(
+    "--format",
+    "fmt",
+    type=click.Choice(["table", "json", "csv", "markdown"]),
+    default="table",
+)
+@output_option
+@click.pass_context
+def tags_cmd(ctx: click.Context, top: int, fmt: str, output: str | None) -> None:
+    """🏷️ 标签/版本列表 — 显示仓库标签及关联 commit"""
+    analyzer: Analyzer = ctx.obj["analyzer"]
+    result = analyzer.list_tags(max_count=top)
+
+    if fmt == "json":
+        data = [
+            {
+                "name": t.name,
+                "sha": t.sha,
+                "tag_date": t.tag_date.isoformat() if t.tag_date else None,
+                "tagger": t.tagger,
+                "message": t.message,
+                "commit_sha": t.commit_sha,
+                "commit_date": t.commit_date.isoformat() if t.commit_date else None,
+                "commit_author": t.commit_author,
+            }
+            for t in result
+        ]
+        _write_output(json.dumps(data, ensure_ascii=False, indent=2), output)
+        return
+
+    if fmt == "csv":
+        headers = ["name", "commit_sha", "tag_date", "commit_author", "message"]
+        rows = [
+            [t.name, t.commit_sha[:12] if t.commit_sha else "",
+             t.tag_date.strftime("%Y-%m-%d") if t.tag_date else "",
+             t.commit_author, t.message[:60]]
+            for t in result
+        ]
+        _write_output(_output_csv(headers, rows), output)
+        return
+
+    if fmt == "markdown":
+        headers = ["#", "标签", "Commit", "日期", "作者", "说明"]
+        rows = [
+            [str(i), t.name, t.commit_sha[:12] if t.commit_sha else "-",
+             t.tag_date.strftime("%Y-%m-%d") if t.tag_date else "-",
+             t.commit_author.split(" <")[0] if t.commit_author else "-",
+             t.message[:50] if t.message else "-"]
+            for i, t in enumerate(result, 1)
+        ]
+        _write_output(_output_markdown_table(headers, rows), output)
+        return
+
+    if not result:
+        console.print("[dim]无标签数据[/]")
+        return
+
+    table = Table(title="🏷️ 标签/版本列表", show_lines=True)
+    table.add_column("#", style="dim", width=4)
+    table.add_column("标签", style="bold cyan")
+    table.add_column("Commit", style="dim")
+    table.add_column("日期", justify="right")
+    table.add_column("作者", style="bold")
+    table.add_column("说明", max_width=40)
+
+    for i, t in enumerate(result, 1):
+        commit_short = t.commit_sha[:12] if t.commit_sha else "-"
+        date_str = t.tag_date.strftime("%Y-%m-%d") if t.tag_date else "-"
+        author_str = t.commit_author.split(" <")[0] if t.commit_author else "-"
+        msg = t.message[:50] if t.message else "-"
+        table.add_row(str(i), t.name, commit_short, date_str, author_str, msg)
+    console.print(table)
+
+    console.print(f"\n[dim]共 {len(result)} 个标签[/]")
+
+
+@main.command("file-history")
+@click.argument("filepath")
+@click.option("--top", default=30, help="显示前 N 条记录")
+@click.option(
+    "--format",
+    "fmt",
+    type=click.Choice(["table", "json", "csv", "markdown"]),
+    default="table",
+)
+@output_option
+@click.pass_context
+def file_history_cmd(
+    ctx: click.Context, filepath: str, top: int, fmt: str, output: str | None
+) -> None:
+    """📜 文件修改历史 — 查看指定文件的变更记录"""
+    analyzer: Analyzer = ctx.obj["analyzer"]
+    result = analyzer.file_history(file_path=filepath, max_count=top)
+
+    if fmt == "json":
+        data = [
+            {
+                "sha": c.sha,
+                "author": c.author_name,
+                "date": c.authored_date.isoformat(),
+                "message": c.message.split("\n")[0].strip(),
+                "insertions": c.insertions,
+                "deletions": c.deletions,
+            }
+            for c in result
+        ]
+        _write_output(json.dumps(data, ensure_ascii=False, indent=2), output)
+        return
+
+    if fmt == "csv":
+        headers = ["sha", "author", "date", "message", "insertions", "deletions"]
+        rows = [
+            [c.sha[:12], c.author_name,
+             c.authored_date.strftime("%Y-%m-%d %H:%M"),
+             c.message.split("\n")[0].strip()[:60],
+             c.insertions, c.deletions]
+            for c in result
+        ]
+        _write_output(_output_csv(headers, rows), output)
+        return
+
+    if fmt == "markdown":
+        headers = ["#", "SHA", "作者", "日期", "说明", "变更"]
+        rows = [
+            [str(i), c.sha[:12], c.author_name,
+             c.authored_date.strftime("%Y-%m-%d"),
+             c.message.split("\n")[0].strip()[:60],
+             f"+{c.insertions}/-{c.deletions}"]
+            for i, c in enumerate(result, 1)
+        ]
+        _write_output(_output_markdown_table(headers, rows), output)
+        return
+
+    if not result:
+        console.print(f"[dim]文件 {filepath} 无修改历史[/]")
+        return
+
+    table = Table(title=f"📜 文件历史: {filepath}", show_lines=True)
+    table.add_column("#", style="dim", width=4)
+    table.add_column("SHA", style="dim", width=12)
+    table.add_column("作者", style="cyan")
+    table.add_column("日期", justify="right")
+    table.add_column("说明", max_width=50)
+    table.add_column("变更", justify="right")
+
+    for i, c in enumerate(result, 1):
+        date_str = c.authored_date.strftime("%Y-%m-%d %H:%M")
+        msg = c.message.split("\n")[0].strip()[:50]
+        changes = f"[green]+{c.insertions}[/]/[red]-{c.deletions}[/]"
+        table.add_row(str(i), c.sha[:12], c.author_name, date_str, msg, changes)
+    console.print(table)
+
+    console.print(f"\n[dim]共 {len(result)} 条记录[/]")
+
+
+@main.command("search")
+@click.argument("pattern")
+@time_filter_options
+@format_option
+@output_option
+@click.pass_context
+def search_cmd(
+    ctx: click.Context,
+    pattern: str,
+    since: str | None,
+    until: str | None,
+    fmt: str,
+    output: str | None,
+) -> None:
+    """🔍 搜索 commit 消息 — 支持正则表达式"""
+    analyzer: Analyzer = ctx.obj["analyzer"]
+    result = analyzer.search_messages(
+        pattern=pattern, since=_parse_since(since), until=_parse_since(until)
+    )
+
+    if fmt == "json":
+        data = [
+            {
+                "sha": m.sha,
+                "author": m.author_name,
+                "date": m.authored_date.isoformat(),
+                "message": m.message,
+                "matched_text": m.matched_text,
+            }
+            for m in result
+        ]
+        _write_output(json.dumps(data, ensure_ascii=False, indent=2), output)
+        return
+
+    if fmt == "csv":
+        headers = ["sha", "author", "date", "message"]
+        rows = [
+            [m.sha[:12], m.author_name,
+             m.authored_date.strftime("%Y-%m-%d"),
+             m.message[:60]]
+            for m in result
+        ]
+        _write_output(_output_csv(headers, rows), output)
+        return
+
+    if fmt == "markdown":
+        headers = ["#", "SHA", "作者", "日期", "说明"]
+        rows = [
+            [str(i), m.sha[:12], m.author_name,
+             m.authored_date.strftime("%Y-%m-%d"),
+             m.message[:60]]
+            for i, m in enumerate(result, 1)
+        ]
+        _write_output(_output_markdown_table(headers, rows), output)
+        return
+
+    if not result:
+        console.print(f"[dim]未找到匹配 \'{pattern}\' 的 commit[/]")
+        return
+
+    table = Table(title=f"🔍 搜索: {pattern}", show_lines=True)
+    table.add_column("#", style="dim", width=4)
+    table.add_column("SHA", style="dim", width=12)
+    table.add_column("作者", style="cyan")
+    table.add_column("日期", justify="right")
+    table.add_column("说明", max_width=60)
+
+    for i, m in enumerate(result, 1):
+        date_str = m.authored_date.strftime("%Y-%m-%d")
+        msg = m.message[:55]
+        table.add_row(str(i), m.sha[:12], m.author_name, date_str, msg)
+    console.print(table)
+
+    console.print(f"\n[dim]共 {len(result)} 条匹配[/]")
+
+
+@main.command("contributors-timeline")
+@time_filter_options
+@click.option(
+    "--period",
+    type=click.Choice(["week", "month", "quarter", "year"]),
+    default="month",
+    help="统计周期",
+)
+@format_option
+@output_option
+@click.pass_context
+def contributors_timeline_cmd(
+    ctx: click.Context,
+    since: str | None,
+    until: str | None,
+    period: str,
+    fmt: str,
+    output: str | None,
+) -> None:
+    """📈 贡献者时间线 — 按时间段统计贡献者数量变化"""
+    analyzer: Analyzer = ctx.obj["analyzer"]
+    result = analyzer.contributor_timeline(
+        period=period, since=_parse_since(since), until=_parse_since(until)
+    )
+
+    if fmt == "json":
+        data = [
+            {
+                "period": p.period,
+                "total_contributors": p.total_contributors,
+                "new_contributors": p.new_contributors,
+                "active_contributors": p.active_contributors,
+                "commits": p.commits,
+            }
+            for p in result
+        ]
+        _write_output(json.dumps(data, ensure_ascii=False, indent=2), output)
+        return
+
+    if fmt == "csv":
+        headers = ["period", "total_contributors", "new_contributors", "active_contributors", "commits"]
+        rows = [
+            [p.period, p.total_contributors, p.new_contributors, p.active_contributors, p.commits]
+            for p in result
+        ]
+        _write_output(_output_csv(headers, rows), output)
+        return
+
+    if not result:
+        console.print("[dim]无数据[/]")
+        return
+
+    max_contrib = max(p.total_contributors for p in result) or 1
+    table = Table(title=f"📈 贡献者时间线（按{period}）", show_lines=True)
+    table.add_column("时间段", style="cyan")
+    table.add_column("总贡献者", justify="right", style="bold yellow")
+    table.add_column("新增", justify="right", style="green")
+    table.add_column("活跃", justify="right")
+    table.add_column("Commits", justify="right")
+    table.add_column("趋势", style="green")
+
+    for p in result:
+        bar_len = int(p.total_contributors / max_contrib * 30)
+        bar = "█" * bar_len
+        table.add_row(
+            p.period,
+            str(p.total_contributors),
+            f"[green]+{p.new_contributors}[/]" if p.new_contributors else "0",
+            str(p.active_contributors),
+            str(p.commits),
+            bar,
+        )
+    console.print(table)
+
+
+# ── 恢复 activity 命令（带 --path/--author 过滤） ─────────────────
+
+@main.command("activity")
+@time_filter_options
+@click.option("--filter-path", "filter_path", default=None, help="按文件路径过滤")
+@click.option("--filter-author", "filter_author", default=None, help="按作者过滤")
+@click.option(
+    "--period",
+    type=click.Choice(["day", "week", "month", "year"]),
+    default="month",
+    help="统计周期",
+)
+@format_option
+@click.pass_context
+def activity_cmd(
+    ctx: click.Context,
+    since: str | None,
+    until: str | None,
+    filter_path: str | None,
+    filter_author: str | None,
+    period: str,
+    fmt: str,
+) -> None:
+    """📅 Commit 活跃度趋势"""
+    from collections import Counter as _Counter
+
+    analyzer: Analyzer = ctx.obj["analyzer"]
+    counter: _Counter[str] = _Counter()
+    for c in analyzer.miner.iter_commits(
+        since=_parse_since(since),
+        until=_parse_since(until),
+        author=filter_author,
+        path=filter_path,
+    ):
+        if period == "day":
+            key = c.authored_date.strftime("%Y-%m-%d")
+        elif period == "week":
+            key = c.authored_date.strftime("%Y-W%W")
+        elif period == "month":
+            key = c.authored_date.strftime("%Y-%m")
+        elif period == "year":
+            key = c.authored_date.strftime("%Y")
+        else:
+            key = c.authored_date.strftime("%Y-%m")
+        counter[key] += 1
+
+    data = dict(sorted(counter.items()))
+
+    if fmt == "json":
+        click.echo(json.dumps(data, ensure_ascii=False, indent=2))
+        return
+
+    if fmt == "csv":
+        headers = ["period", "commits"]
+        rows = [[k, v] for k, v in data.items()]
+        click.echo(_output_csv(headers, rows))
+        return
+
+    if not data:
+        console.print("[dim]无数据[/]")
+        return
+
+    max_val = max(data.values()) or 1
+    table = Table(title=f"📅 Commit 活跃度（按{period}）", show_lines=True)
+    table.add_column("时间段", style="cyan")
+    table.add_column("Commits", justify="right")
+    table.add_column("趋势", style="green")
+
+    for period_key, count in data.items():
+        bar_len = int(count / max_val * 30)
+        bar = "█" * bar_len
+        table.add_row(period_key, str(count), bar)
+    console.print(table)

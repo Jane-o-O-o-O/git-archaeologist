@@ -4,6 +4,24 @@
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
+## [0.7.0] - 2026-05-14
+
+### 新增
+- **标签列表** (`tags`)：列出仓库标签/版本，含日期、作者、说明，支持 annotated/lightweight 标签
+- **文件修改历史** (`file-history`)：查看指定文件的 commit 变更记录，支持 glob 路径
+- **Commit 消息搜索** (`search`)：正则表达式搜索 commit 消息，支持时间过滤
+- **贡献者时间线** (`contributors-timeline`)：按时间维度统计贡献者数量变化、新增贡献者
+- **Activity 命令增强**：`activity` 新增 `--filter-path` 和 `--filter-author` 过滤选项
+- **HTML 报告增强**：新增健康评分、Churn 分析、Bus Factor、文件耦合、Commit 热力图共 5 个章节
+- **3 个新 dataclass**：`TagEntry`、`SearchMatch`、`ContributorTimelinePoint`
+- **公共选项装饰器**：`time_filter_options`、`format_option`、`output_option` 等复用装饰器
+- **51 个新测试**，总计 236 个测试全部通过
+
+### 改进
+- 版本号统一为 0.7.0（pyproject.toml + __init__.py）
+- CLI 子命令从 18 个增至 22 个
+- HTML 报告从 5 个章节扩展到 10 个章节
+
 ## [0.6.0] - 2026-05-13
 
 ### 新增

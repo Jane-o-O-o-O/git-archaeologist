@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "git-archaeologist"
-version = "0.6.0"
+version = "0.7.0"
 description = "Git 仓库考古分析工具 — 挖掘代码历史，洞察仓库演变"
 readme = "README.md"
 license = "MIT"

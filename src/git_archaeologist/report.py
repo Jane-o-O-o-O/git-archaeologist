@@ -62,6 +62,13 @@ tr:hover { background: rgba(88,166,255,0.05); }
 .chart-bar { flex: 1; }
 footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--border);
          color: var(--dim); font-size: 0.8em; text-align: center; }
+.score-card { background: var(--card); border: 1px solid var(--border);
+  border-radius: 8px; padding: 20px; text-align: center; margin-bottom: 16px; }
+.score-big { font-size: 3em; font-weight: 700; }
+.score-label { color: var(--dim); font-size: 0.9em; margin-top: 4px; }
+.score-bar { height: 8px; border-radius: 4px; margin-top: 8px; }
+.risk-high { color: var(--red); } .risk-ok { color: var(--green); }
+.coupling-pair { font-size: 0.85em; }
 """
 
 
@@ -177,6 +184,175 @@ def _render_activity_chart(summary: RepoSummary) -> str:
     return "\n".join(rows)
 
 
+def _render_health_section(arch) -> str:
+    """渲染仓库健康评分。"""
+    from git_archaeologist.analyzer import Analyzer
+
+    analyzer = arch.analyzer
+    health = analyzer.health_score()
+
+    overall_color = "var(--green)" if health.overall >= 60 else "var(--red)" if health.overall < 40 else "var(--accent)"
+
+    score_card = (
+        f'<div class="score-card">'
+        f'<div class="score-big" style="color:{overall_color}">{health.overall}/100</div>'
+        f'<div class="score-label">{health.summary}</div>'
+        f'</div>'
+    )
+
+    dims = [
+        ("Bus Factor", health.bus_factor_score, 30),
+        ("Churn", health.churn_score, 20),
+        ("Activity", health.activity_score, 25),
+        ("Diversity", health.diversity_score, 25),
+    ]
+    rows = []
+    for name, score, max_score in dims:
+        pct = score / max_score * 100 if max_score else 0
+        color = "var(--green)" if pct >= 60 else "var(--red)" if pct < 40 else "var(--accent)"
+        detail = health.details.get(name.lower().replace(" ", "_"), "")
+        rows.append(
+            f"<tr><td>{name}</td>"
+            f'<td style="color:{color};font-weight:700">{score}/{max_score}</td>'
+            f'<td class="dim">{_esc(detail)}</td></tr>'
+        )
+
+    return (
+        score_card
+        + "<table><thead><tr><th>维度</th><th>得分</th><th>说明</th></tr></thead><tbody>"
+        + "\n".join(rows)
+        + "</tbody></table>"
+    )
+
+
+def _render_coupling_section(arch) -> str:
+    """渲染文件耦合分析。"""
+    analyzer = arch.analyzer
+    pairs = analyzer.coupling(top_n=10)
+    if not pairs:
+        return "<p class='dim'>无耦合数据</p>"
+
+    rows = []
+    for i, p in enumerate(pairs, 1):
+        pct = p.coupling_strength * 100
+        bar = _build_bar(int(pct), 100, 120)
+        rows.append(
+            f"<tr><td>{i}</td>"
+            f'<td class="coupling-pair">{_esc(p.file_a)}</td>'
+            f'<td class="coupling-pair">{_esc(p.file_b)}</td>'
+            f"<td>{p.co_change_count}</td>"
+            f"<td>{pct:.0f}% {bar}</td></tr>"
+        )
+
+    return (
+        "<table><thead><tr>"
+        "<th>#</th><th>文件 A</th><th>文件 B</th><th>共变次数</th><th>耦合强度</th>"
+        "</tr></thead><tbody>"
+        + "\n".join(rows)
+        + "</tbody></table>"
+    )
+
+
+def _render_busfactor_section(arch) -> str:
+    """渲染 Bus Factor 分析。"""
+    analyzer = arch.analyzer
+    entries = analyzer.bus_factor(entity="file", top_n=10)
+    if not entries:
+        return "<p class='dim'>无 Bus Factor 数据</p>"
+
+    rows = []
+    for i, e in enumerate(entries, 1):
+        risk_cls = "risk-high" if e.bus_factor == 1 else "risk-ok"
+        risk_label = "⚠ 高风险" if e.bus_factor == 1 else "✓ 安全"
+        rows.append(
+            f"<tr><td>{i}</td>"
+            f"<td>{_esc(e.entity)}</td>"
+            f"<td>{_esc(e.top_contributor)}</td>"
+            f"<td>{e.top_contributor_pct:.0f}%</td>"
+            f"<td>{e.contributor_count}</td>"
+            f'<td class="{risk_cls}">{e.bus_factor} {risk_label}</td></tr>'
+        )
+
+    return (
+        "<table><thead><tr>"
+        "<th>#</th><th>文件</th><th>主要贡献者</th><th>占比</th><th>贡献者数</th><th>Bus Factor</th>"
+        "</tr></thead><tbody>"
+        + "\n".join(rows)
+        + "</tbody></table>"
+    )
+
+
+def _render_churn_section(arch) -> str:
+    """渲染 Churn 分析。"""
+    analyzer = arch.analyzer
+    entries = analyzer.churn(top_n=10)
+    if not entries:
+        return "<p class='dim'>无 Churn 数据</p>"
+
+    rows = []
+    for i, e in enumerate(entries, 1):
+        risk = '<span class="risk-high">⚠ 高</span>' if e.churn_ratio > 5 else ""
+        rows.append(
+            f"<tr><td>{i}</td>"
+            f"<td>{_esc(e.path)}</td>"
+            f"<td>{e.change_count}</td>"
+            f"<td class='green'>+{_format_number(e.total_insertions)}</td>"
+            f"<td class='red'>-{_format_number(e.total_deletions)}</td>"
+            f"<td>{e.churn_ratio}x {risk}</td></tr>"
+        )
+
+    return (
+        "<table><thead><tr>"
+        "<th>#</th><th>文件</th><th>变更次数</th><th>新增行</th><th>删除行</th><th>变动率</th>"
+        "</tr></thead><tbody>"
+        + "\n".join(rows)
+        + "</tbody></table>"
+    )
+
+
+def _render_heatmap_section(arch) -> str:
+    """渲染 commit 热力图。"""
+    analyzer = arch.analyzer
+    heatmap = analyzer.commit_heatmap()
+    days = list(heatmap.keys())
+    hours = [f"{h:02d}" for h in range(24)]
+
+    max_val = 0
+    for day_data in heatmap.values():
+        for v in day_data.values():
+            max_val = max(max_val, v)
+    if max_val == 0:
+        return "<p class='dim'>无热力图数据</p>"
+
+    intensity_colors = ["#161b22", "#0e4429", "#006d32", "#26a641", "#39d353", "#56d364"]
+
+    rows_html = ["<table><thead><tr><th>时段</th>"]
+    for h in hours:
+        rows_html.append(f"<th style='font-size:0.7em'>{h}</th>")
+    rows_html.append("</tr></thead><tbody>")
+
+    for day in days:
+        rows_html.append(f"<tr><td style='font-size:0.85em'>{day[:3]}</td>")
+        for h in hours:
+            val = heatmap[day][h]
+            if val == 0:
+                color = intensity_colors[0]
+                text = ""
+            else:
+                ratio = val / max_val
+                level = min(int(ratio * 5), 5)
+                color = intensity_colors[level]
+                text = str(val)
+            rows_html.append(
+                f"<td style='background:{color};text-align:center;font-size:0.75em;"
+                f"padding:2px 4px'>{text}</td>"
+            )
+        rows_html.append("</tr>")
+
+    rows_html.append("</tbody></table>")
+    return "\n".join(rows_html)
+
+
 def generate_html_report(
     repo_path: str = ".",
     since: datetime | None = None,
@@ -211,11 +387,23 @@ def generate_html_report(
 
 {_render_stats_cards(summary)}
 
+<h2>🏥 健康评分</h2>
+{_render_health_section(arch)}
+
 <h2>👤 贡献者排行</h2>
 {_render_authors_table(summary)}
 
 <h2>🔥 热点文件</h2>
 {_render_hotspots_table(summary)}
+
+<h2>🔄 Churn 分析</h2>
+{_render_churn_section(arch)}
+
+<h2>🚌 Bus Factor</h2>
+{_render_busfactor_section(arch)}
+
+<h2>🔗 文件耦合</h2>
+{_render_coupling_section(arch)}
 
 <h2>📁 文件类型分布</h2>
 {_render_filetypes_table(summary)}
@@ -223,7 +411,10 @@ def generate_html_report(
 <h2>📅 活跃度趋势（按月）</h2>
 {_render_activity_chart(summary)}
 
-<footer>Generated by <strong>Git Archaeologist</strong> v0.6.0</footer>
+<h2>🗓️ Commit 热力图</h2>
+{_render_heatmap_section(arch)}
+
+<footer>Generated by <strong>Git Archaeologist</strong> v0.7.0</footer>
 """
 
     return f"""<!DOCTYPE html>

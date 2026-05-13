@@ -1,6 +1,6 @@
 """Git Archaeologist — Git 仓库考古分析工具。"""
 
-__version__ = "0.6.0"
+__version__ = "0.7.0"
 
 from git_archaeologist.analyzer import (
     Analyzer,
@@ -10,6 +10,7 @@ from git_archaeologist.analyzer import (
     ChurnEntry,
     CommitMessageStats,
     ComplexityPoint,
+    ContributorTimelinePoint,
     CouplingPair,
     DirStats,
     FileAgeEntry,
@@ -17,6 +18,8 @@ from git_archaeologist.analyzer import (
     HotspotFile,
     PeriodDiff,
     RepoStats,
+    SearchMatch,
+    TagEntry,
 )
 from git_archaeologist.core import GitArchaeologist, RepoSummary
 from git_archaeologist.git_mining import CommitInfo, FileChange, GitMiner
@@ -30,6 +33,7 @@ __all__ = [
     "CommitInfo",
     "CommitMessageStats",
     "ComplexityPoint",
+    "ContributorTimelinePoint",
     "CouplingPair",
     "DirStats",
     "FileAgeEntry",
@@ -41,4 +45,6 @@ __all__ = [
     "PeriodDiff",
     "RepoStats",
     "RepoSummary",
+    "SearchMatch",
+    "TagEntry",
 ]

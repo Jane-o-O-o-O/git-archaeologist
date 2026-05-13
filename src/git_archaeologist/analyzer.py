@@ -223,6 +223,42 @@ class PeriodDiff:
     most_changed_files: list[tuple[str, int]] = field(default_factory=list)
 
 
+@dataclass
+class TagEntry:
+    """标签/版本信息。"""
+
+    name: str
+    sha: str = ""
+    tag_date: datetime | None = None
+    tagger: str = ""
+    message: str = ""
+    commit_sha: str = ""
+    commit_date: datetime | None = None
+    commit_author: str = ""
+
+
+@dataclass
+class SearchMatch:
+    """Commit 消息搜索结果。"""
+
+    sha: str
+    author_name: str
+    authored_date: datetime
+    message: str
+    matched_text: str = ""
+
+
+@dataclass
+class ContributorTimelinePoint:
+    """贡献者时间线数据点。"""
+
+    period: str
+    total_contributors: int = 0
+    new_contributors: int = 0
+    active_contributors: int = 0
+    commits: int = 0
+
+
 class Analyzer:
     """仓库分析器。"""
 
@@ -1082,3 +1118,183 @@ class Analyzer:
             departed_authors=departed_authors,
             most_changed_files=most_changed,
         )
+
+    # ── v0.7.0 新增方法 ────────────────────────────────────────────
+
+    def list_tags(
+        self,
+        max_count: int | None = None,
+    ) -> list[TagEntry]:
+        """列出仓库标签及关联 commit 信息。
+
+        Args:
+            max_count: 最多返回的标签数。
+
+        Returns:
+            TagEntry 列表，按标签日期降序排列。
+        """
+        import git as _git
+
+        tags: list[TagEntry] = []
+        for tag_ref in self.miner.repo.tags:
+            tag_obj = tag_ref.tag
+            entry = TagEntry(name=tag_ref.name)
+
+            if tag_obj is not None:
+                # Annotated tag
+                try:
+                    entry.tag_date = datetime.fromtimestamp(tag_obj.tagged_date)
+                except (AttributeError, ValueError):
+                    pass
+                try:
+                    entry.tagger = str(tag_obj.tagger)
+                except AttributeError:
+                    pass
+                try:
+                    entry.message = tag_obj.message.strip() if tag_obj.message else ""
+                except AttributeError:
+                    pass
+                try:
+                    entry.commit_sha = tag_obj.object.hexsha
+                except AttributeError:
+                    pass
+            else:
+                # Lightweight tag — point directly to commit
+                try:
+                    entry.commit_sha = tag_ref.commit.hexsha
+                except (AttributeError, ValueError):
+                    pass
+
+            # Resolve commit info
+            try:
+                commit = tag_ref.commit
+                entry.commit_date = datetime.fromtimestamp(commit.committed_date)
+                entry.commit_author = f"{commit.author.name} <{commit.author.email}>"
+                if not entry.commit_sha:
+                    entry.commit_sha = commit.hexsha
+                if not entry.tag_date:
+                    entry.tag_date = entry.commit_date
+            except Exception:
+                pass
+
+            tags.append(entry)
+
+        # Sort by date descending
+        tags.sort(key=lambda t: t.tag_date or datetime.min, reverse=True)
+        if max_count:
+            tags = tags[:max_count]
+        return tags
+
+    def file_history(
+        self,
+        file_path: str,
+        max_count: int | None = 50,
+    ) -> list[CommitInfo]:
+        """获取指定文件的修改历史。
+
+        Args:
+            file_path: 文件路径
+            max_count: 最多返回的 commit 数
+
+        Returns:
+            CommitInfo 列表，按时间降序
+        """
+        return list(self.miner.iter_commits(path=file_path, max_count=max_count))
+
+    def search_messages(
+        self,
+        pattern: str,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        author: str | None = None,
+        max_count: int | None = None,
+    ) -> list[SearchMatch]:
+        """搜索 commit 消息。
+
+        Args:
+            pattern: 正则表达式模式
+            since: 起始时间
+            until: 结束时间
+            author: 按作者过滤
+            max_count: 最多返回数量
+
+        Returns:
+            SearchMatch 列表
+        """
+        compiled = re.compile(pattern, re.IGNORECASE)
+        results: list[SearchMatch] = []
+
+        for c in self.miner.iter_commits(since=since, until=until, author=author):
+            match = compiled.search(c.message)
+            if match:
+                results.append(
+                    SearchMatch(
+                        sha=c.sha,
+                        author_name=c.author_name,
+                        authored_date=c.authored_date,
+                        message=c.message.split("\n")[0].strip(),
+                        matched_text=match.group(0),
+                    )
+                )
+                if max_count and len(results) >= max_count:
+                    break
+
+        return results
+
+    def contributor_timeline(
+        self,
+        period: str = "month",
+        since: datetime | None = None,
+        until: datetime | None = None,
+    ) -> list[ContributorTimelinePoint]:
+        """贡献者时间线 — 按时间段统计贡献者数量变化。
+
+        Args:
+            period: 分桶粒度 ``"week"``、``"month"``、``"quarter"``、``"year"``
+            since: 起始时间
+            until: 截止时间
+
+        Returns:
+            ContributorTimelinePoint 列表，按时间升序
+        """
+        fmt_map = {
+            "week": "%Y-W%W",
+            "month": "%Y-%m",
+            "quarter": "%Y-Q",
+            "year": "%Y",
+        }
+        fmt = fmt_map.get(period, "%Y-%m")
+
+        def _period_key(dt: datetime) -> str:
+            if period == "quarter":
+                q = (dt.month - 1) // 3 + 1
+                return f"{dt.year}-Q{q}"
+            return dt.strftime(fmt)
+
+        buckets: dict[str, set[str]] = defaultdict(set)
+        bucket_commits: Counter[str] = Counter()
+
+        for c in self.miner.iter_commits(since=since, until=until):
+            key = _period_key(c.authored_date)
+            buckets[key].add(f"{c.author_name} <{c.author_email}>")
+            bucket_commits[key] += 1
+
+        sorted_keys = sorted(buckets.keys())
+        all_seen: set[str] = set()
+        results: list[ContributorTimelinePoint] = []
+
+        for key in sorted_keys:
+            current = buckets[key]
+            new_count = len(current - all_seen)
+            all_seen.update(current)
+            results.append(
+                ContributorTimelinePoint(
+                    period=key,
+                    total_contributors=len(all_seen),
+                    new_contributors=new_count,
+                    active_contributors=len(current),
+                    commits=bucket_commits[key],
+                )
+            )
+
+        return results
