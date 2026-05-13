@@ -6,7 +6,6 @@ import shutil
 from datetime import datetime, timedelta
 
 import git
-import pytest
 
 from git_archaeologist.analyzer import Analyzer, CommitMessageStats, HealthScore
 
@@ -215,8 +214,8 @@ class TestCommitMessageStats:
         try:
             analyzer = Analyzer(tmpdir)
             result = analyzer.commit_message_stats()
-            # 15 个 commit 中有 11 个是 conventional
-            assert result.conventional_count == 11
+            # 15 个 commit 中有 13 个是 conventional (type: 或 type(scope): 格式)
+            assert result.conventional_count == 13
             assert result.conventional_pct > 70
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)

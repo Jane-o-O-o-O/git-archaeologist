@@ -51,7 +51,7 @@ class TestGitMiner:
         """until 过滤应生效。"""
         until = datetime(2024, 1, 3)
         commits = list(self.miner.iter_commits(until=until))
-        assert all(c.authored_date <= until for c in commits)
+        assert all(c.authored_date.date() <= until.date() for c in commits)
         assert len(commits) < 10
 
     def test_iter_commits_with_author_filter(self):

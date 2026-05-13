@@ -810,13 +810,13 @@ class Analyzer:
                 if word not in stop_words:
                     words[word] += 1
 
-        total = len(lengths) or 1
+        total = len(lengths)
         return CommitMessageStats(
             total_commits=total,
             conventional_count=conventional_count,
-            conventional_pct=round(conventional_count / total * 100, 1),
+            conventional_pct=round(conventional_count / total * 100, 1) if total else 0.0,
             type_counts=dict(type_counter.most_common(20)),
-            avg_message_length=round(sum(lengths) / total, 1) if lengths else 0,
+            avg_message_length=round(sum(lengths) / total, 1) if total else 0.0,
             max_message_length=max(lengths) if lengths else 0,
             min_message_length=min(lengths) if lengths else 0,
             short_messages=short_count,

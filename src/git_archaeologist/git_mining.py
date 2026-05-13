@@ -82,7 +82,10 @@ class GitMiner:
         if since:
             kwargs["since"] = since.isoformat()
         if until:
-            kwargs["until"] = until.isoformat()
+            # 将 until 推进一天使其包含当天的 commit（git --until 是排他的）
+            from datetime import timedelta
+
+            kwargs["until"] = (until + timedelta(days=1)).isoformat()
         if author:
             kwargs["author"] = author
         if path:
@@ -153,7 +156,9 @@ class GitMiner:
         if since:
             kwargs["since"] = since.isoformat()
         if until:
-            kwargs["until"] = until.isoformat()
+            from datetime import timedelta
+
+            kwargs["until"] = (until + timedelta(days=1)).isoformat()
         if author:
             kwargs["author"] = author
         if path:

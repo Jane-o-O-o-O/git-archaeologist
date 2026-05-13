@@ -96,6 +96,28 @@ def stats(ctx: click.Context, since: str | None, until: str | None, fmt: str) ->
         click.echo(json.dumps(data, ensure_ascii=False, indent=2))
         return
 
+    if fmt == "csv":
+        headers = ["total_commits", "total_authors", "total_files_changed",
+                    "total_insertions", "total_deletions", "active_days", "avg_commits_per_day"]
+        row = [s.total_commits, s.total_authors, s.total_files_changed,
+               s.total_insertions, s.total_deletions, s.active_days, s.avg_commits_per_day]
+        click.echo(_output_csv(headers, [row]))
+        return
+
+    if fmt == "markdown":
+        headers = ["指标", "值"]
+        rows = [
+            ["总 Commits", str(s.total_commits)],
+            ["贡献者数", str(s.total_authors)],
+            ["涉及文件数", str(s.total_files_changed)],
+            ["总新增行数", str(s.total_insertions)],
+            ["总删除行数", str(s.total_deletions)],
+            ["活跃天数", str(s.active_days)],
+            ["日均 Commits", str(s.avg_commits_per_day)],
+        ]
+        click.echo(_output_markdown_table(headers, rows))
+        return
+
     table = Table(title="🏺 仓库统计", show_lines=True)
     table.add_column("指标", style="cyan")
     table.add_column("值", style="green", justify="right")
@@ -142,6 +164,21 @@ def authors(
             for a in result
         ]
         click.echo(json.dumps(data, ensure_ascii=False, indent=2))
+        return
+
+    if fmt == "csv":
+        headers = ["name", "email", "commits", "insertions", "deletions", "files_touched"]
+        rows = [[a.name, a.email, a.commit_count, a.insertions, a.deletions,
+                 len(a.files_touched)] for a in result]
+        click.echo(_output_csv(headers, rows))
+        return
+
+    if fmt == "markdown":
+        headers = ["#", "作者", "Commits", "新增行", "删除行", "涉及文件"]
+        rows = [[str(i), a.name, str(a.commit_count), str(a.insertions),
+                 str(a.deletions), str(len(a.files_touched))]
+                for i, a in enumerate(result, 1)]
+        click.echo(_output_markdown_table(headers, rows))
         return
 
     table = Table(title="👤 贡献者排行", show_lines=True)
@@ -206,6 +243,22 @@ def hotspots(
         click.echo(json.dumps(data, ensure_ascii=False, indent=2))
         return
 
+    if fmt == "csv":
+        headers = ["path", "changes", "authors", "last_modified"]
+        rows = [[f.path, f.change_count, len(f.authors),
+                 f.last_modified.strftime("%Y-%m-%d") if f.last_modified else ""]
+                for f in result]
+        click.echo(_output_csv(headers, rows))
+        return
+
+    if fmt == "markdown":
+        headers = ["#", "文件路径", "修改次数", "贡献者数", "最后修改"]
+        rows = [[str(i), f.path, str(f.change_count), str(len(f.authors)),
+                 f.last_modified.strftime("%Y-%m-%d") if f.last_modified else "-"]
+                for i, f in enumerate(result, 1)]
+        click.echo(_output_markdown_table(headers, rows))
+        return
+
     table = Table(title="🔥 热点文件", show_lines=True)
     table.add_column("#", style="dim", width=4)
     table.add_column("文件路径", style="cyan", max_width=60)
@@ -247,6 +300,12 @@ def activity(
 
     if fmt == "json":
         click.echo(json.dumps(data, ensure_ascii=False, indent=2))
+        return
+
+    if fmt == "csv":
+        headers = ["period", "commits"]
+        rows = [[k, v] for k, v in data.items()]
+        click.echo(_output_csv(headers, rows))
         return
 
     if not data:
@@ -374,6 +433,13 @@ def coupling(
             for p in result
         ]
         click.echo(json.dumps(data, ensure_ascii=False, indent=2))
+        return
+
+    if fmt == "csv":
+        headers = ["file_a", "file_b", "co_change_count", "coupling_strength"]
+        rows = [[p.file_a, p.file_b, p.co_change_count, p.coupling_strength]
+                for p in result]
+        click.echo(_output_csv(headers, rows))
         return
 
     if not result:
@@ -688,6 +754,14 @@ def heatmap(ctx: click.Context, since: str | None, until: str | None, fmt: str) 
         click.echo(json.dumps(heatmap_data, ensure_ascii=False, indent=2))
         return
 
+    if fmt == "csv":
+        headers = ["day"] + [f"{h:02d}" for h in range(24)]
+        rows = []
+        for day in heatmap_data:
+            rows.append([day] + [heatmap_data[day][f"{h:02d}"] for h in range(24)])
+        click.echo(_output_csv(headers, rows))
+        return
+
     days = list(heatmap_data.keys())
     hours = [f"{h:02d}" for h in range(24)]
 
@@ -754,6 +828,15 @@ def summary(ctx: click.Context, since: str | None, until: str | None, fmt: str) 
         click.echo(json.dumps(s.to_dict(), ensure_ascii=False, indent=2))
         return
 
+    if fmt == "csv":
+        stats = s.stats
+        headers = ["total_commits", "total_authors", "total_files_changed",
+                    "total_insertions", "total_deletions", "active_days"]
+        row = [stats.total_commits, stats.total_authors, stats.total_files_changed,
+               stats.total_insertions, stats.total_deletions, stats.active_days]
+        click.echo(_output_csv(headers, [row]))
+        return
+
     # 仓库统计卡片
     stats = s.stats
     table = Table(title="📋 仓库概览", show_lines=True)
@@ -810,3 +893,124 @@ def summary(ctx: click.Context, since: str | None, until: str | None, fmt: str) 
         for ft in s.file_types[:5]:
             ft_table.add_row(ft.extension, str(ft.file_count), str(ft.total_changes))
         console.print(ft_table)
+
+
+@main.command()
+@click.option("--since", default=None, help="起始时间")
+@click.option("--until", default=None, help="结束时间")
+@click.option("--format", "fmt", type=click.Choice(["table", "json", "csv"]), default="table")
+@click.pass_context
+def health(ctx: click.Context, since: str | None, until: str | None, fmt: str) -> None:
+    """仓库健康评分 — 综合评估仓库质量"""
+    analyzer: Analyzer = ctx.obj["analyzer"]
+    result = analyzer.health_score(since=_parse_since(since), until=_parse_since(until))
+
+    if fmt == "json":
+        data = {
+            "overall": result.overall,
+            "bus_factor_score": result.bus_factor_score,
+            "churn_score": result.churn_score,
+            "activity_score": result.activity_score,
+            "diversity_score": result.diversity_score,
+            "summary": result.summary,
+            "details": result.details,
+        }
+        click.echo(json.dumps(data, ensure_ascii=False, indent=2))
+        return
+
+    if fmt == "csv":
+        headers = ["overall", "bus_factor_score", "churn_score",
+                    "activity_score", "diversity_score"]
+        row = [result.overall, result.bus_factor_score, result.churn_score,
+               result.activity_score, result.diversity_score]
+        click.echo(_output_csv(headers, [row]))
+        return
+
+    table = Table(title="仓库健康评分", show_lines=True)
+    table.add_column("维度", style="cyan")
+    table.add_column("得分", justify="right", style="bold yellow")
+    table.add_column("说明", style="dim")
+
+    table.add_row("Bus Factor", f"{result.bus_factor_score}/30",
+                   result.details.get("bus_factor", ""))
+    table.add_row("Churn", f"{result.churn_score}/20",
+                   result.details.get("churn", ""))
+    table.add_row("Activity", f"{result.activity_score}/25",
+                   result.details.get("activity", ""))
+    table.add_row("Diversity", f"{result.diversity_score}/25",
+                   result.details.get("diversity", ""))
+    table.add_row("总分", f"[bold]{result.overall}/100[/]", result.summary)
+
+    console.print(table)
+
+
+@main.command("commit-messages")
+@click.option("--since", default=None, help="起始时间")
+@click.option("--until", default=None, help="结束时间")
+@click.option("--format", "fmt", type=click.Choice(["table", "json", "csv"]), default="table")
+@click.pass_context
+def commit_messages(ctx: click.Context, since: str | None, until: str | None, fmt: str) -> None:
+    """Commit 消息分析 — conventional commits、消息质量"""
+    analyzer: Analyzer = ctx.obj["analyzer"]
+    result = analyzer.commit_message_stats(since=_parse_since(since), until=_parse_since(until))
+
+    if fmt == "json":
+        data = {
+            "total_commits": result.total_commits,
+            "conventional_count": result.conventional_count,
+            "conventional_pct": result.conventional_pct,
+            "type_counts": result.type_counts,
+            "avg_message_length": result.avg_message_length,
+            "max_message_length": result.max_message_length,
+            "min_message_length": result.min_message_length,
+            "short_messages": result.short_messages,
+            "long_messages": result.long_messages,
+            "most_common_words": result.most_common_words,
+        }
+        click.echo(json.dumps(data, ensure_ascii=False, indent=2))
+        return
+
+    if fmt == "csv":
+        headers = ["total_commits", "conventional_count", "conventional_pct",
+                    "avg_message_length", "short_messages", "long_messages"]
+        row = [result.total_commits, result.conventional_count, result.conventional_pct,
+               result.avg_message_length, result.short_messages, result.long_messages]
+        click.echo(_output_csv(headers, [row]))
+        return
+
+    table = Table(title="Commit 消息分析", show_lines=True)
+    table.add_column("指标", style="cyan")
+    table.add_column("值", style="green", justify="right")
+
+    table.add_row("总 Commits", str(result.total_commits))
+    table.add_row("Conventional Commits",
+                   f"{result.conventional_count} ({result.conventional_pct:.1f}%)")
+    table.add_row("平均消息长度", f"{result.avg_message_length:.1f} 字符")
+    table.add_row("最长消息", f"{result.max_message_length} 字符")
+    table.add_row("最短消息", f"{result.min_message_length} 字符")
+    table.add_row("过短消息 (<10字符)", str(result.short_messages))
+    table.add_row("过长消息 (>72字符)", str(result.long_messages))
+    console.print(table)
+
+    # 类型分布
+    if result.type_counts:
+        console.print()
+        type_table = Table(title="Conventional Commit 类型分布", show_lines=True)
+        type_table.add_column("类型", style="cyan")
+        type_table.add_column("数量", justify="right", style="bold yellow")
+        type_table.add_column("占比", justify="right")
+        total_conv = sum(result.type_counts.values())
+        for t, count in sorted(result.type_counts.items(), key=lambda x: -x[1]):
+            pct = count / total_conv * 100 if total_conv else 0
+            type_table.add_row(t, str(count), f"{pct:.1f}%")
+        console.print(type_table)
+
+    # 常见词汇
+    if result.most_common_words:
+        console.print()
+        word_table = Table(title="常见词汇 Top 10", show_lines=True)
+        word_table.add_column("词汇", style="cyan")
+        word_table.add_column("出现次数", justify="right", style="bold yellow")
+        for word, count in result.most_common_words[:10]:
+            word_table.add_row(word, str(count))
+        console.print(word_table)
