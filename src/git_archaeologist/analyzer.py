@@ -279,6 +279,36 @@ class CoAuthorPair:
         return round(self.shared_files / total, 3)
 
 
+@dataclass
+class RepoInfo:
+    """仓库基本信息。"""
+
+    path: str = ""
+    remote_url: str = ""
+    head_sha: str = ""
+    head_branch: str = ""
+    total_branches: int = 0
+    total_tags: int = 0
+    total_commits: int = 0
+    first_commit_date: datetime | None = None
+    last_commit_date: datetime | None = None
+    is_dirty: bool = False
+    branches: list[str] = field(default_factory=list)
+
+
+@dataclass
+class BranchEntry:
+    """分支信息条目。"""
+
+    name: str = ""
+    sha: str = ""
+    is_active: bool = False
+    last_commit_date: datetime | None = None
+    last_commit_author: str = ""
+    last_commit_message: str = ""
+    commit_count: int = 0
+
+
 class Analyzer:
     """仓库分析器。"""
 
@@ -1373,3 +1403,81 @@ class Analyzer:
 
         result.sort(key=lambda p: p.collaboration_strength, reverse=True)
         return result[:top_n]
+
+    def repo_info(self) -> RepoInfo:
+        """获取仓库基本信息 — remote URL、HEAD、分支数、标签数等。"""
+        repo = self.miner.repo
+
+        # Remote URL
+        remote_url = ""
+        try:
+            remote_url = repo.remotes.origin.url
+        except (AttributeError, IndexError):
+            pass
+
+        # HEAD info
+        head_sha = ""
+        head_branch = ""
+        try:
+            head_sha = repo.head.commit.hexsha
+            if repo.head.is_detached:
+                head_branch = f"(detached at {head_sha[:12]})"
+            else:
+                head_branch = repo.head.ref.name
+        except (ValueError, TypeError):
+            pass
+
+        # Branches
+        branches: list[str] = []
+        for ref in repo.branches:
+            branches.append(ref.name)
+
+        # Tags count
+        total_tags = len(repo.tags)
+
+        # Stats
+        stats = self.repo_stats()
+
+        return RepoInfo(
+            path=self.miner.repo_path,
+            remote_url=remote_url,
+            head_sha=head_sha,
+            head_branch=head_branch,
+            total_branches=len(branches),
+            total_tags=total_tags,
+            total_commits=stats.total_commits,
+            first_commit_date=stats.first_commit_date,
+            last_commit_date=stats.last_commit_date,
+            is_dirty=self.miner.is_dirty,
+            branches=sorted(branches),
+        )
+
+    def list_branches(self) -> list[BranchEntry]:
+        """列出所有分支及其最后 commit 信息。"""
+        repo = self.miner.repo
+        current_branch = ""
+        try:
+            current_branch = repo.head.ref.name
+        except (TypeError, ValueError):
+            pass
+
+        result: list[BranchEntry] = []
+        for ref in repo.branches:
+            try:
+                commit = ref.commit
+                entry = BranchEntry(
+                    name=ref.name,
+                    sha=commit.hexsha[:12],
+                    is_active=(ref.name == current_branch),
+                    last_commit_date=datetime.fromtimestamp(commit.committed_date),
+                    last_commit_author=f"{commit.author.name} <{commit.author.email}>",
+                    last_commit_message=commit.message.strip().split("\n")[0][:80],
+                )
+                # Count commits reachable from this branch
+                entry.commit_count = sum(1 for _ in repo.iter_commits(ref.name))
+                result.append(entry)
+            except Exception:
+                continue
+
+        result.sort(key=lambda b: b.last_commit_date or datetime.min, reverse=True)
+        return result

@@ -4,6 +4,23 @@
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
+## [0.9.0] - 2026-05-14
+
+### 新增
+- **仓库基本信息** (`repo-info`)：显示 remote URL、HEAD、分支数、标签数、工作区状态
+- **分支列表** (`branches`)：列出所有分支，含最后 commit 日期、作者、消息、commit 数
+- **RepoInfo / BranchEntry dataclass**：新增两个数据结构用于仓库元数据和分支信息
+- **格式统一**：所有 26 个 CLI 子命令均完整支持 `--format table/json/csv/markdown` 四种输出格式
+- **`filetypes` 命令 `--output` 支持**：补齐 `--output/-o` 文件输出选项
+- **`diff` 命令 `--format markdown`**：时段对比新增 Markdown 格式输出
+- **41 个新测试**，总计 305 个测试全部通过
+
+### 改进
+- CLI 子命令从 23 个增至 25 个（新增 `repo-info`、`branches`）
+- `busfactor`/`churn`/`dirs`/`ages` 命令补齐 csv 和 markdown 格式
+- `coupling`/`heatmap`/`summary`/`activity` 命令补齐 markdown 格式
+- 版本号统一为 0.9.0（pyproject.toml + __init__.py）
+
 ## [0.8.0] - 2026-05-14
 
 ### 新增

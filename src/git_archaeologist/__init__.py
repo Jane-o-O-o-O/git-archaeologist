@@ -1,12 +1,13 @@
 """Git Archaeologist — Git 仓库考古分析工具。"""
 
-__version__ = "0.8.0"
+__version__ = "0.9.0"
 
 from git_archaeologist.analyzer import (
     Analyzer,
     AuthorStats,
     BlameEntry,
     BusFactorEntry,
+    BranchEntry,
     ChurnEntry,
     CoAuthorPair,
     CommitMessageStats,
@@ -18,6 +19,7 @@ from git_archaeologist.analyzer import (
     HealthScore,
     HotspotFile,
     PeriodDiff,
+    RepoInfo,
     RepoStats,
     SearchMatch,
     TagEntry,
@@ -29,6 +31,7 @@ __all__ = [
     "Analyzer",
     "AuthorStats",
     "BlameEntry",
+    "BranchEntry",
     "BusFactorEntry",
     "ChurnEntry",
     "CoAuthorPair",
@@ -45,6 +48,7 @@ __all__ = [
     "HealthScore",
     "HotspotFile",
     "PeriodDiff",
+    "RepoInfo",
     "RepoStats",
     "RepoSummary",
     "SearchMatch",

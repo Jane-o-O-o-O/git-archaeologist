@@ -44,6 +44,12 @@
 - **📤 全命令 `--output`** — 所有 24 个子命令均支持 `-o` 输出到文件
 - **📝 Markdown 格式补全** — `health` 和 `commit-messages` 命令新增 `--format markdown`
 
+### v0.9.0 新增
+- **ℹ️ 仓库基本信息** — `repo-info` 命令显示 remote URL、HEAD、分支数、标签数
+- **🌿 分支列表** — `branches` 命令列出所有分支及最后 commit 信息
+- **📊 格式全面统一** — 全部 25 个子命令均支持 `table/json/csv/markdown` 四种格式
+- **📤 `filetypes --output`** — 补齐文件类型命令的文件输出选项
+
 ### 输出
 - **🌐 HTML 报告** — 暗色主题的可浏览完整分析报告
 - **📋 终端表格** — Rich 美化输出
@@ -150,6 +156,14 @@ git-archaeologist report -o report.html
 git-archaeologist contributors-network --top 10
 git-archaeologist contributors-network --min-shared 3 --format json
 
+# 仓库基本信息
+git-archaeologist repo-info
+git-archaeologist repo-info --format json
+
+# 分支列表
+git-archaeologist branches
+git-archaeologist branches --format markdown
+
 # 输出到文件（所有命令支持 -o）
 git-archaeologist stats --format json -o stats.json
 git-archaeologist authors --format csv -o authors.csv
@@ -216,6 +230,14 @@ network = analyzer.contributors_network(top_n=10)
 for pair in network:
     print(f"{pair.author_a} ↔ {pair.author_b}: {pair.shared_files} 共同文件 ({pair.collaboration_strength:.1%})")
 
+# 仓库基本信息
+info = analyzer.repo_info()
+print(f"分支: {info.head_branch}, Commits: {info.total_commits}, Remote: {info.remote_url}")
+
+# 分支列表
+for branch in analyzer.list_branches():
+    print(f"{branch.name}: {branch.commit_count} commits, last: {branch.last_commit_date}")
+
 # 文件级 diff 详情
 for commit, file_changes in miner.iter_commits_with_details():
     for fc in file_changes:
@@ -233,7 +255,7 @@ src/git_archaeologist/
 ├── analyzer.py      # 核心分析引擎 — 统计、热点、耦合、Bus Factor、Churn、热力图、blame、复杂度
 ├── core.py          # 统一 API 入口类 (GitArchaeologist)
 ├── report.py        # HTML 报告生成器
-└── cli.py           # CLI 子命令（24 个）
+├── cli.py           # CLI 子命令（25 个）
 ```
 
 ---

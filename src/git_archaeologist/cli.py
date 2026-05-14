@@ -337,9 +337,10 @@ def hotspots(
 @click.option("--until", default=None, help="结束时间")
 @click.option("--top", default=15, help="显示前 N 种文件类型")
 @click.option("--format", "fmt", type=click.Choice(["table", "json", "csv", "markdown"]), default="table")
+@output_option
 @click.pass_context
 def filetypes(
-    ctx: click.Context, since: str | None, until: str | None, top: int, fmt: str
+    ctx: click.Context, since: str | None, until: str | None, top: int, fmt: str, output: str | None,
 ) -> None:
     """📁 文件类型分布"""
     from git_archaeologist.core import GitArchaeologist
@@ -350,7 +351,21 @@ def filetypes(
 
     if fmt == "json":
         from dataclasses import asdict
-        click.echo(json.dumps([asdict(ft) for ft in result], ensure_ascii=False, indent=2))
+        _write_output(json.dumps([asdict(ft) for ft in result], ensure_ascii=False, indent=2), output)
+        return
+
+    if fmt == "csv":
+        headers = ["extension", "file_count", "total_changes", "total_insertions", "total_deletions"]
+        rows = [[ft.extension, ft.file_count, ft.total_changes,
+                 ft.total_insertions, ft.total_deletions] for ft in result]
+        _write_output(_output_csv(headers, rows), output)
+        return
+
+    if fmt == "markdown":
+        headers = ["扩展名", "文件数", "变更次数", "新增行", "删除行"]
+        rows = [[ft.extension, str(ft.file_count), str(ft.total_changes),
+                 str(ft.total_insertions), str(ft.total_deletions)] for ft in result]
+        _write_output(_output_markdown_table(headers, rows), output)
         return
 
     if not result:
@@ -451,6 +466,14 @@ def coupling(
         _write_output(_output_csv(headers, rows), output)
         return
 
+    if fmt == "markdown":
+        headers = ["#", "文件 A", "文件 B", "共变次数", "耦合强度"]
+        rows = [[str(i), p.file_a, p.file_b, str(p.co_change_count),
+                 f"{p.coupling_strength:.1%}"]
+                for i, p in enumerate(result, 1)]
+        _write_output(_output_markdown_table(headers, rows), output)
+        return
+
     if not result:
         console.print("[dim]无耦合数据[/]")
         return
@@ -514,6 +537,22 @@ def busfactor(
             for e in result
         ]
         _write_output(json.dumps(data, ensure_ascii=False, indent=2), output)
+        return
+
+    if fmt == "csv":
+        headers = ["entity", "total_changes", "top_contributor", "top_contributor_pct",
+                    "contributor_count", "bus_factor"]
+        rows = [[e.entity, e.total_changes, e.top_contributor, e.top_contributor_pct,
+                 e.contributor_count, e.bus_factor] for e in result]
+        _write_output(_output_csv(headers, rows), output)
+        return
+
+    if fmt == "markdown":
+        headers = ["#", "实体", "主要贡献者", "占比", "贡献者数", "Bus Factor"]
+        rows = [[str(i), e.entity, e.top_contributor, f"{e.top_contributor_pct:.0f}%",
+                 str(e.contributor_count), str(e.bus_factor)]
+                for i, e in enumerate(result, 1)]
+        _write_output(_output_markdown_table(headers, rows), output)
         return
 
     if not result:
@@ -580,6 +619,22 @@ def churn(
         _write_output(json.dumps(data, ensure_ascii=False, indent=2), output)
         return
 
+    if fmt == "csv":
+        headers = ["path", "total_insertions", "total_deletions", "net_lines",
+                    "change_count", "churn_ratio"]
+        rows = [[e.path, e.total_insertions, e.total_deletions, e.net_lines,
+                 e.change_count, e.churn_ratio] for e in result]
+        _write_output(_output_csv(headers, rows), output)
+        return
+
+    if fmt == "markdown":
+        headers = ["#", "文件路径", "变更次数", "新增行", "删除行", "净变更", "变动率"]
+        rows = [[str(i), e.path, str(e.change_count), str(e.total_insertions),
+                 str(e.total_deletions), str(e.net_lines), f"{e.churn_ratio}x"]
+                for i, e in enumerate(result, 1)]
+        _write_output(_output_markdown_table(headers, rows), output)
+        return
+
     if not result:
         console.print("[dim]无数据[/]")
         return
@@ -644,6 +699,22 @@ def dirs_cmd(
             for d in result
         ]
         _write_output(json.dumps(data, ensure_ascii=False, indent=2), output)
+        return
+
+    if fmt == "csv":
+        headers = ["path", "file_count", "total_changes", "total_insertions",
+                    "total_deletions", "authors"]
+        rows = [[d.path, d.file_count, d.total_changes, d.total_insertions,
+                 d.total_deletions, len(d.authors)] for d in result]
+        _write_output(_output_csv(headers, rows), output)
+        return
+
+    if fmt == "markdown":
+        headers = ["#", "目录", "文件数", "变更次数", "新增行", "删除行", "贡献者数"]
+        rows = [[str(i), d.path, str(d.file_count), str(d.total_changes),
+                 str(d.total_insertions), str(d.total_deletions), str(len(d.authors))]
+                for i, d in enumerate(result, 1)]
+        _write_output(_output_markdown_table(headers, rows), output)
         return
 
     if not result:
@@ -722,6 +793,26 @@ def ages_cmd(
         _write_output(json.dumps(data, ensure_ascii=False, indent=2), output)
         return
 
+    if fmt == "csv":
+        headers = ["path", "change_count", "primary_author", "first_seen",
+                    "last_modified", "age_days", "stale_days"]
+        rows = [[e.path, e.change_count, e.primary_author,
+                 e.first_seen.strftime("%Y-%m-%d") if e.first_seen else "",
+                 e.last_modified.strftime("%Y-%m-%d") if e.last_modified else "",
+                 e.age_days or "", e.stale_days or ""] for e in result]
+        _write_output(_output_csv(headers, rows), output)
+        return
+
+    if fmt == "markdown":
+        headers = ["#", "文件路径", "变更次数", "主要作者", "首次出现", "最后修改", "陈旧天数"]
+        rows = [[str(i), e.path, str(e.change_count), e.primary_author or "-",
+                 e.first_seen.strftime("%Y-%m-%d") if e.first_seen else "-",
+                 e.last_modified.strftime("%Y-%m-%d") if e.last_modified else "-",
+                 str(e.stale_days) if e.stale_days is not None else "-"]
+                for i, e in enumerate(result, 1)]
+        _write_output(_output_markdown_table(headers, rows), output)
+        return
+
     if not result:
         console.print("[dim]无数据[/]")
         return
@@ -778,6 +869,14 @@ def heatmap(ctx: click.Context, since: str | None, until: str | None, fmt: str, 
         for day in heatmap_data:
             rows.append([day] + [heatmap_data[day][f"{h:02d}"] for h in range(24)])
         _write_output(_output_csv(headers, rows), output)
+        return
+
+    if fmt == "markdown":
+        headers = ["时段"] + [f"{h:02d}" for h in range(24)]
+        rows = []
+        for day in heatmap_data:
+            rows.append([day[:3]] + [str(heatmap_data[day][f"{h:02d}"]) for h in range(24)])
+        _write_output(_output_markdown_table(headers, rows), output)
         return
 
     days = list(heatmap_data.keys())
@@ -854,6 +953,20 @@ def summary(ctx: click.Context, since: str | None, until: str | None, fmt: str, 
         row = [stats.total_commits, stats.total_authors, stats.total_files_changed,
                stats.total_insertions, stats.total_deletions, stats.active_days]
         _write_output(_output_csv(headers, [row]), output)
+        return
+
+    if fmt == "markdown":
+        stats = s.stats
+        headers = ["指标", "值"]
+        rows = [
+            ["总 Commits", str(stats.total_commits)],
+            ["贡献者数", str(stats.total_authors)],
+            ["涉及文件数", str(stats.total_files_changed)],
+            ["总新增行数", str(stats.total_insertions)],
+            ["总删除行数", str(stats.total_deletions)],
+            ["活跃天数", str(stats.active_days)],
+        ]
+        _write_output(_output_markdown_table(headers, rows), output)
         return
 
     # 仓库统计卡片
@@ -1239,7 +1352,7 @@ def complexity(
 @click.option(
     "--format",
     "fmt",
-    type=click.Choice(["table", "json", "csv"]),
+    type=click.Choice(["table", "json", "csv", "markdown"]),
     default="table",
 )
 @output_option
@@ -1292,6 +1405,19 @@ def diff_cmd(
             ["files", result.period_a_files, result.period_b_files, f"{result.files_change:.1f}%"],
         ]
         _write_output(_output_csv(headers, rows), output)
+        return
+
+    if fmt == "markdown":
+        headers = ["指标", "时段 A", "时段 B", "变化"]
+        rows = [
+            ["Commits", str(result.period_a_commits), str(result.period_b_commits),
+             f"{result.commits_change:+.1f}%"],
+            ["贡献者", str(result.period_a_authors), str(result.period_b_authors),
+             f"{result.authors_change:+.1f}%"],
+            ["涉及文件", str(result.period_a_files), str(result.period_b_files),
+             f"{result.files_change:+.1f}%"],
+        ]
+        _write_output(_output_markdown_table(headers, rows), output)
         return
 
     def _pct_str(pct: float) -> str:
@@ -1700,6 +1826,12 @@ def activity_cmd(
         _write_output(_output_csv(headers, rows), output)
         return
 
+    if fmt == "markdown":
+        headers = ["时间段", "Commits"]
+        rows = [[k, str(v)] for k, v in data.items()]
+        _write_output(_output_markdown_table(headers, rows), output)
+        return
+
     if not data:
         console.print("[dim]无数据[/]")
         return
@@ -1804,3 +1936,154 @@ def contributors_network_cmd(
     console.print(table)
 
     console.print(f"\n[dim]共 {len(result)} 对协作关系[/]")
+
+
+@main.command("repo-info")
+@click.option("--format", "fmt", type=click.Choice(["table", "json", "csv", "markdown"]), default="table")
+@output_option
+@click.pass_context
+def repo_info_cmd(ctx: click.Context, fmt: str, output: str | None) -> None:
+    """ℹ️ 仓库基本信息 — remote、HEAD、分支、标签概览"""
+    analyzer: Analyzer = ctx.obj["analyzer"]
+    info = analyzer.repo_info()
+
+    if fmt == "json":
+        data = {
+            "path": info.path,
+            "remote_url": info.remote_url,
+            "head_sha": info.head_sha,
+            "head_branch": info.head_branch,
+            "total_branches": info.total_branches,
+            "total_tags": info.total_tags,
+            "total_commits": info.total_commits,
+            "first_commit_date": info.first_commit_date.isoformat() if info.first_commit_date else None,
+            "last_commit_date": info.last_commit_date.isoformat() if info.last_commit_date else None,
+            "is_dirty": info.is_dirty,
+            "branches": info.branches,
+        }
+        _write_output(json.dumps(data, ensure_ascii=False, indent=2), output)
+        return
+
+    if fmt == "csv":
+        headers = ["key", "value"]
+        rows = [
+            ["path", info.path],
+            ["remote_url", info.remote_url],
+            ["head_branch", info.head_branch],
+            ["head_sha", info.head_sha[:12] if info.head_sha else ""],
+            ["total_branches", info.total_branches],
+            ["total_tags", info.total_tags],
+            ["total_commits", info.total_commits],
+            ["is_dirty", info.is_dirty],
+        ]
+        _write_output(_output_csv(headers, rows), output)
+        return
+
+    if fmt == "markdown":
+        headers = ["属性", "值"]
+        rows = [
+            ["仓库路径", info.path],
+            ["Remote URL", info.remote_url or "(无)"],
+            ["当前分支", info.head_branch or "(无)"],
+            ["HEAD SHA", info.head_sha[:12] if info.head_sha else "-"],
+            ["分支数", str(info.total_branches)],
+            ["标签数", str(info.total_tags)],
+            ["总 Commits", str(info.total_commits)],
+            ["首次提交", info.first_commit_date.strftime("%Y-%m-%d") if info.first_commit_date else "-"],
+            ["最后提交", info.last_commit_date.strftime("%Y-%m-%d") if info.last_commit_date else "-"],
+            ["工作区状态", "有未提交变更" if info.is_dirty else "干净"],
+        ]
+        _write_output(_output_markdown_table(headers, rows), output)
+        return
+
+    table = Table(title="ℹ️ 仓库信息", show_lines=True)
+    table.add_column("属性", style="cyan")
+    table.add_column("值", style="green")
+    table.add_row("仓库路径", info.path)
+    table.add_row("Remote URL", info.remote_url or "[dim](无)[/]")
+    table.add_row("当前分支", info.head_branch or "[dim](无)[/]")
+    table.add_row("HEAD SHA", info.head_sha[:12] if info.head_sha else "-")
+    table.add_row("分支数", str(info.total_branches))
+    table.add_row("标签数", str(info.total_tags))
+    table.add_row("总 Commits", _format_number(info.total_commits))
+    if info.first_commit_date:
+        table.add_row("首次提交", info.first_commit_date.strftime("%Y-%m-%d"))
+    if info.last_commit_date:
+        table.add_row("最后提交", info.last_commit_date.strftime("%Y-%m-%d"))
+    dirty_str = "[red]有未提交变更[/]" if info.is_dirty else "[green]干净[/]"
+    table.add_row("工作区状态", dirty_str)
+
+    console.print(table)
+
+    if info.branches:
+        console.print(f"\n[dim]分支: {', '.join(info.branches)}[/]")
+
+
+@main.command("branches")
+@click.option("--format", "fmt", type=click.Choice(["table", "json", "csv", "markdown"]), default="table")
+@output_option
+@click.pass_context
+def branches_cmd(ctx: click.Context, fmt: str, output: str | None) -> None:
+    """🌿 分支列表 — 显示各分支最后 commit 信息"""
+    analyzer: Analyzer = ctx.obj["analyzer"]
+    result = analyzer.list_branches()
+
+    if fmt == "json":
+        data = [
+            {
+                "name": b.name,
+                "sha": b.sha,
+                "is_active": b.is_active,
+                "last_commit_date": b.last_commit_date.isoformat() if b.last_commit_date else None,
+                "last_commit_author": b.last_commit_author,
+                "last_commit_message": b.last_commit_message,
+                "commit_count": b.commit_count,
+            }
+            for b in result
+        ]
+        _write_output(json.dumps(data, ensure_ascii=False, indent=2), output)
+        return
+
+    if fmt == "csv":
+        headers = ["name", "sha", "is_active", "last_commit_date", "last_commit_author",
+                    "commit_count"]
+        rows = [[b.name, b.sha, b.is_active,
+                 b.last_commit_date.strftime("%Y-%m-%d") if b.last_commit_date else "",
+                 b.last_commit_author, b.commit_count] for b in result]
+        _write_output(_output_csv(headers, rows), output)
+        return
+
+    if fmt == "markdown":
+        headers = ["#", "分支", "SHA", "最后提交", "作者", "Commits"]
+        rows = [[str(i), ("**" + b.name + "**" if b.is_active else b.name), b.sha,
+                 b.last_commit_date.strftime("%Y-%m-%d") if b.last_commit_date else "-",
+                 b.last_commit_author.split(" <")[0] if b.last_commit_author else "-",
+                 str(b.commit_count)]
+                for i, b in enumerate(result, 1)]
+        _write_output(_output_markdown_table(headers, rows), output)
+        return
+
+    if not result:
+        console.print("[dim]无分支数据[/]")
+        return
+
+    table = Table(title="🌿 分支列表", show_lines=True)
+    table.add_column("#", style="dim", width=4)
+    table.add_column("分支", style="cyan")
+    table.add_column("SHA", style="dim", width=12)
+    table.add_column("最后提交", justify="right")
+    table.add_column("作者", style="bold")
+    table.add_column("说明", max_width=50)
+    table.add_column("Commits", justify="right")
+
+    for i, b in enumerate(result, 1):
+        date_str = b.last_commit_date.strftime("%Y-%m-%d %H:%M") if b.last_commit_date else "-"
+        author = b.last_commit_author.split(" <")[0] if b.last_commit_author else "-"
+        name_str = f"[bold green]→ {b.name}[/]" if b.is_active else b.name
+        table.add_row(
+            str(i), name_str, b.sha, date_str, author,
+            b.last_commit_message[:50], str(b.commit_count),
+        )
+    console.print(table)
+
+    console.print(f"\n[dim]共 {len(result)} 个分支[/]")
