@@ -4,6 +4,20 @@
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
+## [0.8.0] - 2026-05-14
+
+### 新增
+- **贡献者协作网络** (`contributors-network`)：分析哪些作者经常修改相同文件，发现协作模式，支持 `--min-shared` 过滤
+- **CoAuthorPair dataclass**：协作对数据结构，含 `collaboration_strength` 属性（Jaccard 相似度）
+- **全命令 `--output` 支持**：所有 24 个 CLI 子命令均支持 `-o` 输出到文件
+- **Markdown 格式补全**：`health` 和 `commit-messages` 命令新增 `--format markdown` 输出
+- **28 个新测试**，总计 264 个测试全部通过
+
+### 改进
+- CLI 子命令从 22 个增至 23 个（新增 `contributors-network`）
+- 所有命令的 JSON/CSV 输出统一使用 `_write_output()` 支持文件输出
+- 版本号统一为 0.8.0（pyproject.toml + __init__.py）
+
 ## [0.7.0] - 2026-05-14
 
 ### 新增

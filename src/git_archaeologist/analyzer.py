@@ -259,6 +259,26 @@ class ContributorTimelinePoint:
     commits: int = 0
 
 
+@dataclass
+class CoAuthorPair:
+    """贡献者协作对 — 两个作者共同修改过的文件及次数。"""
+
+    author_a: str
+    author_b: str
+    shared_files: int = 0
+    shared_file_list: list[str] = field(default_factory=list)
+    author_a_commits: int = 0
+    author_b_commits: int = 0
+
+    @property
+    def collaboration_strength(self) -> float:
+        """协作强度 (0.0 ~ 1.0)，基于共同文件数与总文件数的 Jaccard 比。"""
+        total = self.author_a_commits + self.author_b_commits - self.shared_files
+        if total == 0:
+            return 0.0
+        return round(self.shared_files / total, 3)
+
+
 class Analyzer:
     """仓库分析器。"""
 
@@ -1298,3 +1318,58 @@ class Analyzer:
             )
 
         return results
+
+    def contributors_network(
+        self,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        top_n: int = 20,
+        min_shared: int = 2,
+    ) -> list[CoAuthorPair]:
+        """贡献者协作网络 — 找出经常修改相同文件的作者对。
+
+        Args:
+            since: 起始时间
+            until: 结束时间
+            top_n: 返回前 N 对
+            min_shared: 最少共同修改的文件数
+
+        Returns:
+            CoAuthorPair 列表，按协作强度降序
+        """
+        # file -> set of authors
+        file_authors: dict[str, set[str]] = defaultdict(set)
+        # author -> number of distinct files touched
+        author_file_counts: Counter[str] = Counter()
+
+        for c in self.miner.iter_commits(since=since, until=until):
+            author = c.author_name
+            for f in c.files_changed:
+                file_authors[f].add(author)
+                author_file_counts[author] += 1
+
+        # Build co-author pairs from shared files
+        pair_shared: dict[tuple[str, str], set[str]] = defaultdict(set)
+        for _fpath, authors in file_authors.items():
+            if len(authors) < 2:
+                continue
+            for a1, a2 in combinations(sorted(authors), 2):
+                pair_shared[(a1, a2)].add(_fpath)
+
+        result: list[CoAuthorPair] = []
+        for (a1, a2), shared in pair_shared.items():
+            if len(shared) < min_shared:
+                continue
+            result.append(
+                CoAuthorPair(
+                    author_a=a1,
+                    author_b=a2,
+                    shared_files=len(shared),
+                    shared_file_list=sorted(shared)[:10],
+                    author_a_commits=author_file_counts.get(a1, 0),
+                    author_b_commits=author_file_counts.get(a2, 0),
+                )
+            )
+
+        result.sort(key=lambda p: p.collaboration_strength, reverse=True)
+        return result[:top_n]

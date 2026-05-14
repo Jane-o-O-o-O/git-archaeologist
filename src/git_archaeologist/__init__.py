@@ -1,6 +1,6 @@
 """Git Archaeologist — Git 仓库考古分析工具。"""
 
-__version__ = "0.7.0"
+__version__ = "0.8.0"
 
 from git_archaeologist.analyzer import (
     Analyzer,
@@ -8,6 +8,7 @@ from git_archaeologist.analyzer import (
     BlameEntry,
     BusFactorEntry,
     ChurnEntry,
+    CoAuthorPair,
     CommitMessageStats,
     ComplexityPoint,
     ContributorTimelinePoint,
@@ -30,6 +31,7 @@ __all__ = [
     "BlameEntry",
     "BusFactorEntry",
     "ChurnEntry",
+    "CoAuthorPair",
     "CommitInfo",
     "CommitMessageStats",
     "ComplexityPoint",

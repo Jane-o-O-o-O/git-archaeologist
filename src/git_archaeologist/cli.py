@@ -122,8 +122,9 @@ def main(ctx: click.Context, repo: str) -> None:
 @click.option("--since", default=None, help="起始时间 (YYYY-MM-DD 或 1y/6m/30d)")
 @click.option("--until", default=None, help="结束时间")
 @click.option("--format", "fmt", type=click.Choice(["table", "json", "csv", "markdown"]), default="table")
+@output_option
 @click.pass_context
-def stats(ctx: click.Context, since: str | None, until: str | None, fmt: str) -> None:
+def stats(ctx: click.Context, since: str | None, until: str | None, fmt: str, output: str | None) -> None:
     """📊 仓库总体统计"""
     analyzer: Analyzer = ctx.obj["analyzer"]
     s = analyzer.repo_stats(since=_parse_since(since), until=_parse_since(until))
@@ -140,7 +141,7 @@ def stats(ctx: click.Context, since: str | None, until: str | None, fmt: str) ->
             "active_days": s.active_days,
             "avg_commits_per_day": s.avg_commits_per_day,
         }
-        click.echo(json.dumps(data, ensure_ascii=False, indent=2))
+        _write_output(json.dumps(data, ensure_ascii=False, indent=2), output)
         return
 
     if fmt == "csv":
@@ -148,7 +149,7 @@ def stats(ctx: click.Context, since: str | None, until: str | None, fmt: str) ->
                     "total_insertions", "total_deletions", "active_days", "avg_commits_per_day"]
         row = [s.total_commits, s.total_authors, s.total_files_changed,
                s.total_insertions, s.total_deletions, s.active_days, s.avg_commits_per_day]
-        click.echo(_output_csv(headers, [row]))
+        _write_output(_output_csv(headers, [row]), output)
         return
 
     if fmt == "markdown":
@@ -162,7 +163,7 @@ def stats(ctx: click.Context, since: str | None, until: str | None, fmt: str) ->
             ["活跃天数", str(s.active_days)],
             ["日均 Commits", str(s.avg_commits_per_day)],
         ]
-        click.echo(_output_markdown_table(headers, rows))
+        _write_output(_output_markdown_table(headers, rows), output)
         return
 
     table = Table(title="🏺 仓库统计", show_lines=True)
@@ -188,9 +189,10 @@ def stats(ctx: click.Context, since: str | None, until: str | None, fmt: str) ->
 @click.option("--until", default=None, help="结束时间")
 @click.option("--top", default=20, help="显示前 N 位贡献者")
 @click.option("--format", "fmt", type=click.Choice(["table", "json", "csv", "markdown"]), default="table")
+@output_option
 @click.pass_context
 def authors(
-    ctx: click.Context, since: str | None, until: str | None, top: int, fmt: str
+    ctx: click.Context, since: str | None, until: str | None, top: int, fmt: str, output: str | None,
 ) -> None:
     """👤 贡献者统计"""
     analyzer: Analyzer = ctx.obj["analyzer"]
@@ -210,14 +212,14 @@ def authors(
             }
             for a in result
         ]
-        click.echo(json.dumps(data, ensure_ascii=False, indent=2))
+        _write_output(json.dumps(data, ensure_ascii=False, indent=2), output)
         return
 
     if fmt == "csv":
         headers = ["name", "email", "commits", "insertions", "deletions", "files_touched"]
         rows = [[a.name, a.email, a.commit_count, a.insertions, a.deletions,
                  len(a.files_touched)] for a in result]
-        click.echo(_output_csv(headers, rows))
+        _write_output(_output_csv(headers, rows), output)
         return
 
     if fmt == "markdown":
@@ -225,7 +227,7 @@ def authors(
         rows = [[str(i), a.name, str(a.commit_count), str(a.insertions),
                  str(a.deletions), str(len(a.files_touched))]
                 for i, a in enumerate(result, 1)]
-        click.echo(_output_markdown_table(headers, rows))
+        _write_output(_output_markdown_table(headers, rows), output)
         return
 
     table = Table(title="👤 贡献者排行", show_lines=True)
@@ -257,6 +259,7 @@ def authors(
 @click.option("--top", default=20, help="显示前 N 个热点文件")
 @click.option("--ignore", multiple=True, help="忽略的文件 glob 模式")
 @click.option("--format", "fmt", type=click.Choice(["table", "json", "csv", "markdown"]), default="table")
+@output_option
 @click.pass_context
 def hotspots(
     ctx: click.Context,
@@ -265,6 +268,7 @@ def hotspots(
     top: int,
     ignore: tuple[str, ...],
     fmt: str,
+    output: str | None,
 ) -> None:
     """🔥 热点文件分析"""
     analyzer: Analyzer = ctx.obj["analyzer"]
@@ -287,7 +291,7 @@ def hotspots(
             }
             for f in result
         ]
-        click.echo(json.dumps(data, ensure_ascii=False, indent=2))
+        _write_output(json.dumps(data, ensure_ascii=False, indent=2), output)
         return
 
     if fmt == "csv":
@@ -295,7 +299,7 @@ def hotspots(
         rows = [[f.path, f.change_count, len(f.authors),
                  f.last_modified.strftime("%Y-%m-%d") if f.last_modified else ""]
                 for f in result]
-        click.echo(_output_csv(headers, rows))
+        _write_output(_output_csv(headers, rows), output)
         return
 
     if fmt == "markdown":
@@ -303,7 +307,7 @@ def hotspots(
         rows = [[str(i), f.path, str(f.change_count), str(len(f.authors)),
                  f.last_modified.strftime("%Y-%m-%d") if f.last_modified else "-"]
                 for i, f in enumerate(result, 1)]
-        click.echo(_output_markdown_table(headers, rows))
+        _write_output(_output_markdown_table(headers, rows), output)
         return
 
     table = Table(title="🔥 热点文件", show_lines=True)
@@ -407,6 +411,7 @@ def report(
 @click.option("--top", default=20, help="显示前 N 对")
 @click.option("--min-co-change", default=2, help="最少共同修改次数")
 @click.option("--format", "fmt", type=click.Choice(["table", "json", "csv", "markdown"]), default="table")
+@output_option
 @click.pass_context
 def coupling(
     ctx: click.Context,
@@ -415,6 +420,7 @@ def coupling(
     top: int,
     min_co_change: int,
     fmt: str,
+    output: str | None,
 ) -> None:
     """🔗 文件耦合分析 — 经常一起被修改的文件对"""
     analyzer: Analyzer = ctx.obj["analyzer"]
@@ -435,14 +441,14 @@ def coupling(
             }
             for p in result
         ]
-        click.echo(json.dumps(data, ensure_ascii=False, indent=2))
+        _write_output(json.dumps(data, ensure_ascii=False, indent=2), output)
         return
 
     if fmt == "csv":
         headers = ["file_a", "file_b", "co_change_count", "coupling_strength"]
         rows = [[p.file_a, p.file_b, p.co_change_count, p.coupling_strength]
                 for p in result]
-        click.echo(_output_csv(headers, rows))
+        _write_output(_output_csv(headers, rows), output)
         return
 
     if not result:
@@ -474,6 +480,7 @@ def coupling(
 @click.option("--entity", type=click.Choice(["file", "dir"]), default="file", help="分析粒度")
 @click.option("--top", default=20, help="显示前 N 个")
 @click.option("--format", "fmt", type=click.Choice(["table", "json", "csv", "markdown"]), default="table")
+@output_option
 @click.pass_context
 def busfactor(
     ctx: click.Context,
@@ -482,6 +489,7 @@ def busfactor(
     entity: str,
     top: int,
     fmt: str,
+    output: str | None,
 ) -> None:
     """🚌 Bus Factor — 关键人员依赖度分析"""
     analyzer: Analyzer = ctx.obj["analyzer"]
@@ -505,7 +513,7 @@ def busfactor(
             }
             for e in result
         ]
-        click.echo(json.dumps(data, ensure_ascii=False, indent=2))
+        _write_output(json.dumps(data, ensure_ascii=False, indent=2), output)
         return
 
     if not result:
@@ -539,6 +547,7 @@ def busfactor(
 @click.option("--until", default=None, help="结束时间")
 @click.option("--top", default=20, help="显示前 N 个")
 @click.option("--format", "fmt", type=click.Choice(["table", "json", "csv", "markdown"]), default="table")
+@output_option
 @click.pass_context
 def churn(
     ctx: click.Context,
@@ -546,6 +555,7 @@ def churn(
     until: str | None,
     top: int,
     fmt: str,
+    output: str | None,
 ) -> None:
     """🔄 Churn 分析 — 高变动率文件（反复重写）"""
     analyzer: Analyzer = ctx.obj["analyzer"]
@@ -567,7 +577,7 @@ def churn(
             }
             for e in result
         ]
-        click.echo(json.dumps(data, ensure_ascii=False, indent=2))
+        _write_output(json.dumps(data, ensure_ascii=False, indent=2), output)
         return
 
     if not result:
@@ -602,6 +612,7 @@ def churn(
 @click.option("--until", default=None, help="结束时间")
 @click.option("--top", default=20, help="显示前 N 个目录")
 @click.option("--format", "fmt", type=click.Choice(["table", "json", "csv", "markdown"]), default="table")
+@output_option
 @click.pass_context
 def dirs_cmd(
     ctx: click.Context,
@@ -609,6 +620,7 @@ def dirs_cmd(
     until: str | None,
     top: int,
     fmt: str,
+    output: str | None,
 ) -> None:
     """📂 目录级统计"""
     analyzer: Analyzer = ctx.obj["analyzer"]
@@ -631,7 +643,7 @@ def dirs_cmd(
             }
             for d in result
         ]
-        click.echo(json.dumps(data, ensure_ascii=False, indent=2))
+        _write_output(json.dumps(data, ensure_ascii=False, indent=2), output)
         return
 
     if not result:
@@ -674,6 +686,7 @@ def dirs_cmd(
 )
 @click.option("--top", default=20, help="显示前 N 个")
 @click.option("--format", "fmt", type=click.Choice(["table", "json", "csv", "markdown"]), default="table")
+@output_option
 @click.pass_context
 def ages_cmd(
     ctx: click.Context,
@@ -682,6 +695,7 @@ def ages_cmd(
     sort: str,
     top: int,
     fmt: str,
+    output: str | None,
 ) -> None:
     """🕰️ 文件年龄分析 — 最陈旧/最早/最活跃"""
     analyzer: Analyzer = ctx.obj["analyzer"]
@@ -705,7 +719,7 @@ def ages_cmd(
             }
             for e in result
         ]
-        click.echo(json.dumps(data, ensure_ascii=False, indent=2))
+        _write_output(json.dumps(data, ensure_ascii=False, indent=2), output)
         return
 
     if not result:
@@ -747,14 +761,15 @@ if __name__ == "__main__":
 @click.option("--since", default=None, help="起始时间")
 @click.option("--until", default=None, help="结束时间")
 @click.option("--format", "fmt", type=click.Choice(["table", "json", "csv", "markdown"]), default="table")
+@output_option
 @click.pass_context
-def heatmap(ctx: click.Context, since: str | None, until: str | None, fmt: str) -> None:
+def heatmap(ctx: click.Context, since: str | None, until: str | None, fmt: str, output: str | None) -> None:
     """🗓️ Commit 热力图 — 按星期×小时分析活跃模式"""
     analyzer: Analyzer = ctx.obj["analyzer"]
     heatmap_data = analyzer.commit_heatmap(since=_parse_since(since), until=_parse_since(until))
 
     if fmt == "json":
-        click.echo(json.dumps(heatmap_data, ensure_ascii=False, indent=2))
+        _write_output(json.dumps(heatmap_data, ensure_ascii=False, indent=2), output)
         return
 
     if fmt == "csv":
@@ -762,7 +777,7 @@ def heatmap(ctx: click.Context, since: str | None, until: str | None, fmt: str) 
         rows = []
         for day in heatmap_data:
             rows.append([day] + [heatmap_data[day][f"{h:02d}"] for h in range(24)])
-        click.echo(_output_csv(headers, rows))
+        _write_output(_output_csv(headers, rows), output)
         return
 
     days = list(heatmap_data.keys())
@@ -818,8 +833,9 @@ def heatmap(ctx: click.Context, since: str | None, until: str | None, fmt: str) 
 @click.option("--since", default=None, help="起始时间")
 @click.option("--until", default=None, help="结束时间")
 @click.option("--format", "fmt", type=click.Choice(["table", "json", "csv", "markdown"]), default="table")
+@output_option
 @click.pass_context
-def summary(ctx: click.Context, since: str | None, until: str | None, fmt: str) -> None:
+def summary(ctx: click.Context, since: str | None, until: str | None, fmt: str, output: str | None) -> None:
     """📋 一站式仓库分析概览"""
     from git_archaeologist.core import GitArchaeologist
 
@@ -828,7 +844,7 @@ def summary(ctx: click.Context, since: str | None, until: str | None, fmt: str) 
     s = arch.summary(since=_parse_since(since), until=_parse_since(until))
 
     if fmt == "json":
-        click.echo(json.dumps(s.to_dict(), ensure_ascii=False, indent=2))
+        _write_output(json.dumps(s.to_dict(), ensure_ascii=False, indent=2), output)
         return
 
     if fmt == "csv":
@@ -837,7 +853,7 @@ def summary(ctx: click.Context, since: str | None, until: str | None, fmt: str) 
                     "total_insertions", "total_deletions", "active_days"]
         row = [stats.total_commits, stats.total_authors, stats.total_files_changed,
                stats.total_insertions, stats.total_deletions, stats.active_days]
-        click.echo(_output_csv(headers, [row]))
+        _write_output(_output_csv(headers, [row]), output)
         return
 
     # 仓库统计卡片
@@ -901,9 +917,10 @@ def summary(ctx: click.Context, since: str | None, until: str | None, fmt: str) 
 @main.command()
 @click.option("--since", default=None, help="起始时间")
 @click.option("--until", default=None, help="结束时间")
-@click.option("--format", "fmt", type=click.Choice(["table", "json", "csv"]), default="table")
+@click.option("--format", "fmt", type=click.Choice(["table", "json", "csv", "markdown"]), default="table")
+@output_option
 @click.pass_context
-def health(ctx: click.Context, since: str | None, until: str | None, fmt: str) -> None:
+def health(ctx: click.Context, since: str | None, until: str | None, fmt: str, output: str | None) -> None:
     """仓库健康评分 — 综合评估仓库质量"""
     analyzer: Analyzer = ctx.obj["analyzer"]
     result = analyzer.health_score(since=_parse_since(since), until=_parse_since(until))
@@ -918,7 +935,7 @@ def health(ctx: click.Context, since: str | None, until: str | None, fmt: str) -
             "summary": result.summary,
             "details": result.details,
         }
-        click.echo(json.dumps(data, ensure_ascii=False, indent=2))
+        _write_output(json.dumps(data, ensure_ascii=False, indent=2), output)
         return
 
     if fmt == "csv":
@@ -926,7 +943,19 @@ def health(ctx: click.Context, since: str | None, until: str | None, fmt: str) -
                     "activity_score", "diversity_score"]
         row = [result.overall, result.bus_factor_score, result.churn_score,
                result.activity_score, result.diversity_score]
-        click.echo(_output_csv(headers, [row]))
+        _write_output(_output_csv(headers, [row]), output)
+        return
+
+    if fmt == "markdown":
+        headers = ["维度", "得分", "说明"]
+        rows = [
+            ["Bus Factor", f"{result.bus_factor_score}/30", result.details.get("bus_factor", "")],
+            ["Churn", f"{result.churn_score}/20", result.details.get("churn", "")],
+            ["Activity", f"{result.activity_score}/25", result.details.get("activity", "")],
+            ["Diversity", f"{result.diversity_score}/25", result.details.get("diversity", "")],
+            ["总分", f"{result.overall}/100", result.summary],
+        ]
+        _write_output(_output_markdown_table(headers, rows), output)
         return
 
     table = Table(title="仓库健康评分", show_lines=True)
@@ -950,9 +979,10 @@ def health(ctx: click.Context, since: str | None, until: str | None, fmt: str) -
 @main.command("commit-messages")
 @click.option("--since", default=None, help="起始时间")
 @click.option("--until", default=None, help="结束时间")
-@click.option("--format", "fmt", type=click.Choice(["table", "json", "csv"]), default="table")
+@click.option("--format", "fmt", type=click.Choice(["table", "json", "csv", "markdown"]), default="table")
+@output_option
 @click.pass_context
-def commit_messages(ctx: click.Context, since: str | None, until: str | None, fmt: str) -> None:
+def commit_messages(ctx: click.Context, since: str | None, until: str | None, fmt: str, output: str | None) -> None:
     """Commit 消息分析 — conventional commits、消息质量"""
     analyzer: Analyzer = ctx.obj["analyzer"]
     result = analyzer.commit_message_stats(since=_parse_since(since), until=_parse_since(until))
@@ -970,7 +1000,7 @@ def commit_messages(ctx: click.Context, since: str | None, until: str | None, fm
             "long_messages": result.long_messages,
             "most_common_words": result.most_common_words,
         }
-        click.echo(json.dumps(data, ensure_ascii=False, indent=2))
+        _write_output(json.dumps(data, ensure_ascii=False, indent=2), output)
         return
 
     if fmt == "csv":
@@ -978,7 +1008,19 @@ def commit_messages(ctx: click.Context, since: str | None, until: str | None, fm
                     "avg_message_length", "short_messages", "long_messages"]
         row = [result.total_commits, result.conventional_count, result.conventional_pct,
                result.avg_message_length, result.short_messages, result.long_messages]
-        click.echo(_output_csv(headers, [row]))
+        _write_output(_output_csv(headers, [row]), output)
+        return
+
+    if fmt == "markdown":
+        headers = ["指标", "值"]
+        rows = [
+            ["总 Commits", str(result.total_commits)],
+            ["Conventional Commits", f"{result.conventional_count} ({result.conventional_pct:.1f}%)"],
+            ["平均消息长度", f"{result.avg_message_length:.1f} 字符"],
+            ["过短消息 (<10字符)", str(result.short_messages)],
+            ["过长消息 (>72字符)", str(result.long_messages)],
+        ]
+        _write_output(_output_markdown_table(headers, rows), output)
         return
 
     table = Table(title="Commit 消息分析", show_lines=True)
@@ -1611,6 +1653,7 @@ def contributors_timeline_cmd(
     help="统计周期",
 )
 @format_option
+@output_option
 @click.pass_context
 def activity_cmd(
     ctx: click.Context,
@@ -1620,6 +1663,7 @@ def activity_cmd(
     filter_author: str | None,
     period: str,
     fmt: str,
+    output: str | None,
 ) -> None:
     """📅 Commit 活跃度趋势"""
     from collections import Counter as _Counter
@@ -1647,13 +1691,13 @@ def activity_cmd(
     data = dict(sorted(counter.items()))
 
     if fmt == "json":
-        click.echo(json.dumps(data, ensure_ascii=False, indent=2))
+        _write_output(json.dumps(data, ensure_ascii=False, indent=2), output)
         return
 
     if fmt == "csv":
         headers = ["period", "commits"]
         rows = [[k, v] for k, v in data.items()]
-        click.echo(_output_csv(headers, rows))
+        _write_output(_output_csv(headers, rows), output)
         return
 
     if not data:
@@ -1671,3 +1715,92 @@ def activity_cmd(
         bar = "█" * bar_len
         table.add_row(period_key, str(count), bar)
     console.print(table)
+
+
+# ── v0.8.0 新增子命令 ────────────────────────────────────────────
+
+
+@main.command("contributors-network")
+@time_filter_options
+@click.option("--top", default=20, help="显示前 N 对")
+@click.option("--min-shared", default=2, help="最少共同修改文件数")
+@format_option
+@output_option
+@click.pass_context
+def contributors_network_cmd(
+    ctx: click.Context,
+    since: str | None,
+    until: str | None,
+    top: int,
+    min_shared: int,
+    fmt: str,
+    output: str | None,
+) -> None:
+    """🤝 贡献者协作网络 — 找出经常修改相同文件的作者对"""
+    analyzer: Analyzer = ctx.obj["analyzer"]
+    result = analyzer.contributors_network(
+        since=_parse_since(since),
+        until=_parse_since(until),
+        top_n=top,
+        min_shared=min_shared,
+    )
+
+    if fmt == "json":
+        data = [
+            {
+                "author_a": p.author_a,
+                "author_b": p.author_b,
+                "shared_files": p.shared_files,
+                "shared_file_list": p.shared_file_list,
+                "author_a_commits": p.author_a_commits,
+                "author_b_commits": p.author_b_commits,
+                "collaboration_strength": p.collaboration_strength,
+            }
+            for p in result
+        ]
+        _write_output(json.dumps(data, ensure_ascii=False, indent=2), output)
+        return
+
+    if fmt == "csv":
+        headers = ["author_a", "author_b", "shared_files", "collaboration_strength"]
+        rows = [[p.author_a, p.author_b, p.shared_files, p.collaboration_strength]
+                for p in result]
+        _write_output(_output_csv(headers, rows), output)
+        return
+
+    if fmt == "markdown":
+        headers = ["#", "作者 A", "作者 B", "共同文件", "协作强度"]
+        rows = [[str(i), p.author_a, p.author_b, str(p.shared_files),
+                 f"{p.collaboration_strength:.1%}"]
+                for i, p in enumerate(result, 1)]
+        _write_output(_output_markdown_table(headers, rows), output)
+        return
+
+    if not result:
+        console.print("[dim]无协作数据[/]")
+        return
+
+    table = Table(title="🤝 贡献者协作网络", show_lines=True)
+    table.add_column("#", style="dim", width=4)
+    table.add_column("作者 A", style="cyan")
+    table.add_column("作者 B", style="cyan")
+    table.add_column("共同文件", justify="right", style="bold yellow")
+    table.add_column("协作强度", justify="right", style="green")
+    table.add_column("示例文件", max_width=40)
+
+    for i, p in enumerate(result, 1):
+        strength_bar = "█" * int(p.collaboration_strength * 10)
+        examples = ", ".join(p.shared_file_list[:3])
+        if len(p.shared_file_list) > 3:
+            examples += f" (+{len(p.shared_file_list) - 3})"
+        table.add_row(
+            str(i),
+            p.author_a,
+            p.author_b,
+            str(p.shared_files),
+            f"{p.collaboration_strength:.1%} {strength_bar}",
+            examples,
+        )
+    console.print(table)
+
+    console.print(f"\n[dim]共 {len(result)} 对协作关系[/]")

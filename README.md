@@ -39,6 +39,11 @@
 - **📅 Activity 增强** — 新增 `--filter-path` 和 `--filter-author` 过滤选项
 - **🌐 HTML 报告增强** — 健康评分、Churn、Bus Factor、耦合分析、热力图 5 个新章节
 
+### v0.8.0 新增
+- **🤝 贡献者协作网络** — 分析哪些作者经常修改相同文件，发现协作模式
+- **📤 全命令 `--output`** — 所有 24 个子命令均支持 `-o` 输出到文件
+- **📝 Markdown 格式补全** — `health` 和 `commit-messages` 命令新增 `--format markdown`
+
 ### 输出
 - **🌐 HTML 报告** — 暗色主题的可浏览完整分析报告
 - **📋 终端表格** — Rich 美化输出
@@ -141,9 +146,14 @@ git-archaeologist activity --filter-path "src/api.py"
 # 生成 HTML 报告（含健康评分、Churn、Bus Factor、耦合、热力图）
 git-archaeologist report -o report.html
 
+# 贡献者协作网络
+git-archaeologist contributors-network --top 10
+git-archaeologist contributors-network --min-shared 3 --format json
+
 # 输出到文件（所有命令支持 -o）
 git-archaeologist stats --format json -o stats.json
 git-archaeologist authors --format csv -o authors.csv
+git-archaeologist health --format markdown -o health.md
 ```
 
 ### Python API
@@ -201,6 +211,11 @@ timeline = analyzer.contributor_timeline(period="month")
 for p in timeline:
     print(f"{p.period}: {p.total_contributors} contributors (+{p.new_contributors} new)")
 
+# 贡献者协作网络
+network = analyzer.contributors_network(top_n=10)
+for pair in network:
+    print(f"{pair.author_a} ↔ {pair.author_b}: {pair.shared_files} 共同文件 ({pair.collaboration_strength:.1%})")
+
 # 文件级 diff 详情
 for commit, file_changes in miner.iter_commits_with_details():
     for fc in file_changes:
@@ -218,7 +233,7 @@ src/git_archaeologist/
 ├── analyzer.py      # 核心分析引擎 — 统计、热点、耦合、Bus Factor、Churn、热力图、blame、复杂度
 ├── core.py          # 统一 API 入口类 (GitArchaeologist)
 ├── report.py        # HTML 报告生成器
-└── cli.py           # CLI 子命令（22 个）
+└── cli.py           # CLI 子命令（24 个）
 ```
 
 ---
