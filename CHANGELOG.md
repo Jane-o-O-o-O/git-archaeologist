@@ -4,6 +4,17 @@
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
+## [1.0.0] - 2026-05-15
+
+### 新增
+- **`python -m git_archaeologist` 支持**：新增 `__main__.py`，可直接通过 `python -m` 运行
+- **PEP 561 类型标记**：新增 `py.typed` 标记文件，支持类型检查工具发现类型信息
+- **HTML 报告版本号动态化**：报告页脚版本号从硬编码改为使用 `__version__`
+
+### 修复
+- **HTML 报告版本号错误**：修复报告页脚始终显示 "v0.7.0" 的问题，现使用实际版本号
+- **版本号统一为 1.0.0**（pyproject.toml + `__init__.py`）
+
 ## [0.9.0] - 2026-05-14
 
 ### 新增

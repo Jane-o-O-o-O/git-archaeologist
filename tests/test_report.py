@@ -90,3 +90,11 @@ class TestReport:
         html = generate_html_report(self.tmpdir)
         assert "<style>" in html
         assert "--bg:" in html  # CSS 变量
+
+    def test_html_footer_contains_actual_version(self):
+        """HTML 报告页脚应显示实际版本号而非硬编码值。"""
+        from git_archaeologist import __version__
+
+        html = generate_html_report(self.tmpdir)
+        assert f"v{__version__}" in html
+        assert "v0.7.0" not in html  # 确保旧的硬编码版本不存在

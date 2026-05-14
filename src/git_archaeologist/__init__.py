@@ -1,6 +1,6 @@
 """Git Archaeologist — Git 仓库考古分析工具。"""
 
-__version__ = "0.9.0"
+__version__ = "1.0.0"
 
 from git_archaeologist.analyzer import (
     Analyzer,
