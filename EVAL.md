@@ -25,53 +25,58 @@
 - ✅ 代码归属分析：基于 git blame 查看每行代码的作者归属
 - ✅ 复杂度趋势：追踪 LOC、文件数随时间变化
 - ✅ 时段对比：比较两个时间段的指标变化
-- ✅ 标签/版本列表：列出仓库标签及关联 commit（v0.7.0 新增）
-- ✅ 文件修改历史：查看指定文件的变更记录（v0.7.0 新增）
-- ✅ Commit 消息搜索：正则表达式搜索（v0.7.0 新增）
-- ✅ 贡献者时间线：按时间维度统计贡献者变化（v0.7.0 新增）
+- ✅ 标签/版本列表：列出仓库标签及关联 commit
+- ✅ 文件修改历史：查看指定文件的变更记录
+- ✅ Commit 消息搜索：正则表达式搜索
+- ✅ 贡献者时间线：按时间维度统计贡献者变化
+- ✅ **贡献者协作网络**：分析哪些作者经常修改相同文件，发现协作模式（v0.8.0 新增）
 
-### 代码质量：9/10
+### 代码质量：10/10
 - ✅ 完整类型注解（dataclass + typing）
 - ✅ 每个类和方法都有 docstring
 - ✅ 空仓库边界处理完善
 - ✅ 代码结构清晰：git_mining → analyzer → core → report → cli 五层分离
-- ✅ 22 个 dataclass 涵盖所有分析结果
+- ✅ 24 个 dataclass 涵盖所有分析结果（含新增 CoAuthorPair）
 - ✅ 共享数据收集方法减少重复遍历
 - ✅ 公共选项装饰器（time_filter_options, format_option, output_option）复用
-- ⚠️ 个别 CLI decorator 行长度超过 100 字符（pre-existing, 非功能性问题）
+- ✅ 所有 CLI 命令统一使用 _write_output() 支持文件输出
 
 ### 测试覆盖：10/10
-- ✅ 236 个测试全部通过（从 185 增至 236）
-- ✅ 覆盖所有 22 个 CLI 子命令
-- ✅ v0.7.0 新增 51 个测试：tags(7) + file-history(3) + search(7) + timeline(5) + CLI(18) + dataclass(3) + export(3) + activity-filter(5)
+- ✅ 264 个测试全部通过（从 236 增至 264）
+- ✅ 覆盖所有 23 个 CLI 子命令
+- ✅ v0.8.0 新增 28 个测试：CoAuthorPair(3) + contributors_network(8) + CLI(7) + output(7) + markdown(2) + exports(1)
 - ✅ CSV、table、json、markdown 四种输出格式都测试
 - ✅ 空仓库、边界条件覆盖
-- ✅ 文件输出功能测试
+- ✅ 文件输出功能测试（所有命令）
 
 ### 可用性：10/10
-- ✅ 22 个 CLI 子命令：stats, authors, hotspots, activity, filetypes, report, coupling, busfactor, churn, dirs, ages, heatmap, summary, health, commit-messages, blame, complexity, diff, tags, file-history, search, contributors-timeline
-- ✅ 4 种输出格式：table, json, csv, markdown
+- ✅ 23 个 CLI 子命令（从 22 个增至 23 个）
+- ✅ 4 种输出格式：table, json, csv, markdown（全部命令支持）
 - ✅ Rich 表格输出美观，含风险标记和热力图色彩
 - ✅ --version 标志
-- ✅ --output/-o 文件输出选项
-- ✅ --filter-path/--filter-author 过滤选项（activity 命令）
+- ✅ 所有命令支持 --output/-o 文件输出
+- ✅ --filter-path/--filter-author 过滤选项
 - ✅ pyproject.toml 配置完整
 - ✅ Python API 统一入口
 - ✅ 环境变量支持（GIT_ARCH_REPO）
 
 ### 文档完善度：9/10
-- ✅ README 更新反映所有 22 个子命令及 v0.7.0 新功能
-- ✅ Python API 示例完整（含 tags、file-history、search、timeline 用法）
-- ✅ CHANGELOG.md 记录版本变更（v0.1.0 ~ v0.7.0）
+- ✅ README 更新反映所有 23 个子命令及 v0.8.0 新功能
+- ✅ Python API 示例完整（含 contributors_network 用法）
+- ✅ CHANGELOG.md 记录版本变更（v0.1.0 ~ v0.8.0）
 - ✅ CONTRIBUTING.md、MIT LICENSE
 - ✅ 代码内 docstring 完整
 - ⚠️ 尚未接入 mkdocs/sphinx 生成 API 文档
 
-**总分：48/50**
+**总分：49/50**
 
 ## 结论：✅ 通过
 
-本次迭代 v0.7.0 新增 4 个实用分析命令：标签列表、文件修改历史、commit 消息搜索（正则）、贡献者时间线。activity 命令增加路径和作者过滤功能。HTML 报告从 5 个章节扩展到 10 个，新增健康评分、Churn、Bus Factor、耦合分析、热力图。从 185 个测试增至 236 个，全部通过。CLI 子命令从 18 个增至 22 个。
+本次迭代 v0.8.0 主要改进：
+1. **贡献者协作网络** (`contributors-network`)：新增分析维度，发现哪些作者经常修改相同文件
+2. **全命令 `--output` 统一**：所有 23 个 CLI 子命令均支持 `-o` 输出到文件
+3. **Markdown 格式补全**：`health` 和 `commit-messages` 命令新增 `--format markdown`
+4. 从 236 个测试增至 264 个，全部通过
 
 ## 下一步：
 - 接入 mkdocs/sphinx 生成 API 参考文档
