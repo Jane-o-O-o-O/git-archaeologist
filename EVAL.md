@@ -7,16 +7,16 @@
 - ✅ Git 采矿引擎：commit 遍历、文件级 diff、贡献者统计、path/author 过滤
 - ✅ 仓库总体统计：commit 数、作者数、文件数、增删行数、活跃天数
 - ✅ 贡献者排行：按 commit 数排序，含增删行数、涉及文件、最后活跃时间
-- ✅ 热点文件分析：按修改次数排序，支持 glob 模式过滤
+- ✅ 热点文件分析：按修改次数排序，支持 glob 模式过滤、自定义排序
 - ✅ 活跃度趋势：按 day/week/month/year 维度统计，支持 --filter-path/--filter-author
 - ✅ 时间范围过滤：--since/--until（支持绝对日期和相对时间 1y/6m/30d）
 - ✅ 文件类型分布：按扩展名统计变更分布
 - ✅ HTML 报告生成：暗色主题、10 个章节（含版本号动态化）
 - ✅ Python API 入口类：GitArchaeologist 统一接口
-- ✅ 文件耦合分析：co-change detection，Jaccard 相似度
-- ✅ Bus Factor 分析：关键人员依赖度，按文件/目录粒度
-- ✅ Churn 分析：高变动率文件识别
-- ✅ 目录级统计：按目录聚合变更
+- ✅ 文件耦合分析：co-change detection，Jaccard 相似度，支持 exclude 和 sort
+- ✅ Bus Factor 分析：关键人员依赖度，支持 exclude 和 sort
+- ✅ Churn 分析：高变动率文件识别，支持 exclude 和 sort
+- ✅ 目录级统计：按目录聚合变更，支持 exclude
 - ✅ 文件年龄分析：陈旧度/最早/活跃排序
 - ✅ Commit 热力图：星期×小时活跃模式分析
 - ✅ 健康评分：Bus Factor/Churn/Activity/Diversity 四维评估
@@ -32,44 +32,52 @@
 - ✅ 贡献者协作网络：分析哪些作者经常修改相同文件
 - ✅ 仓库基本信息：remote URL、HEAD、分支数、标签数、工作区状态
 - ✅ 分支列表：各分支最后 commit 信息、活跃分支标记
+- ✅ CI/CD 集成：ci 命令健康评分阈值检查，退出码 0/1
 
 ### 代码质量：10/10
 - ✅ 完整类型注解（dataclass + typing）
 - ✅ 每个类和方法都有 docstring
 - ✅ 空仓库边界处理完善
 - ✅ 代码结构清晰：git_mining → analyzer → core → report → cli 五层分离
-- ✅ 26+ 个 dataclass 涵盖所有分析结果
+- ✅ 27+ 个 dataclass 涵盖所有分析结果
 - ✅ 共享数据收集方法减少重复遍历
-- ✅ 公共选项装饰器（time_filter_options, format_option, output_option）复用
+- ✅ 公共选项装饰器（time_filter_options, format_option, output_option, exclude_option, sort_option）复用
 - ✅ 所有 CLI 命令统一使用 _write_output() 支持文件输出
 - ✅ PEP 561 py.typed 标记支持类型检查工具
 - ✅ __main__.py 支持 python -m 运行
 - ✅ 版本号统一管理，报告页脚动态引用 __version__
+- ✅ _is_excluded 静态方法统一文件排除逻辑
+- ✅ GitMiner 支持 branch 参数分析指定分支
 
 ### 测试覆盖：10/10
-- ✅ 313 个测试全部通过（从 305 增至 313）
-- ✅ 覆盖全部 25 个 CLI 子命令
-- ✅ v1.0.0 新增 8 个测试：__main__ 模块(2) + py.typed 标记(2) + 版本一致性(3) + 报告版本号(1)
+- ✅ 333 个测试全部通过（从 313 增至 333）
+- ✅ 覆盖全部 26 个 CLI 子命令（含新增 ci 命令）
+- ✅ v1.1.0 新增 20 个测试：exclude(5) + ci(4) + no-color(1) + branch(3) + sort(5) + version(2)
 - ✅ CSV、table、json、markdown 四种输出格式全覆盖测试
 - ✅ 空仓库、边界条件覆盖
 - ✅ 子进程执行测试（python -m 验证）
 
 ### 可用性：10/10
-- ✅ 25 个 CLI 子命令
+- ✅ 26 个 CLI 子命令（含 ci 命令）
 - ✅ 4 种输出格式：table, json, csv, markdown（全部命令统一支持）
 - ✅ Rich 表格输出美观，含风险标记和热力图色彩
 - ✅ --version 标志
 - ✅ 所有命令支持 --output/-o 文件输出
 - ✅ --filter-path/--filter-author 过滤选项
+- ✅ --exclude glob 排除模式（hotspots/coupling/busfactor/churn/dirs）
+- ✅ --sort 自定义排序（hotspots/coupling/busfactor/churn）
+- ✅ --branch 分支分析
+- ✅ --no-color 禁用彩色输出
+- ✅ ci 命令 CI/CD 集成（退出码 0/1）
 - ✅ pyproject.toml 配置完整
 - ✅ Python API 统一入口
 - ✅ 环境变量支持（GIT_ARCH_REPO）
 - ✅ `python -m git_archaeologist` 支持
 
 ### 文档完善度：9/10
-- ✅ README 更新反映全部 25 个子命令及 v1.0.0 新功能
+- ✅ README 更新反映全部 26 个子命令及 v1.1.0 新功能
 - ✅ Python API 示例完整（含 repo_info、list_branches 用法）
-- ✅ CHANGELOG.md 记录版本变更（v0.1.0 ~ v1.0.0）
+- ✅ CHANGELOG.md 记录版本变更（v0.1.0 ~ v1.1.0）
 - ✅ CONTRIBUTING.md、MIT LICENSE
 - ✅ 代码内 docstring 完整
 - ✅ 项目结构清晰说明
@@ -79,21 +87,21 @@
 
 ## 结论：✅ 通过
 
-v1.0.0 作为稳定版本发布，本次迭代改进：
-1. **修复 HTML 报告版本号 bug**：页脚从硬编码 "v0.7.0" 改为动态使用 `__version__`
-2. **`python -m` 支持**：新增 `__main__.py`，可通过 `python -m git_archaeologist` 运行
-3. **PEP 561 类型标记**：新增 `py.typed`，支持 mypy/pyright 等类型检查工具
-4. **版本号统一升级至 1.0.0**
-5. 从 305 个测试增至 313 个，全部通过
+v1.1.0 迭代改进：
+1. **CI/CD 集成命令**：`ci` 子命令支持 `--min-health-score` 阈值检查，不达标时退出码为 1
+2. **全局 --exclude 过滤**：5 个文件分析命令统一支持 glob 排除模式
+3. **--sort 排序选项**：4 个列表命令支持按不同列排序
+4. **--branch 分支分析**：全局选项可分析指定分支
+5. **--no-color 静默模式**：禁用彩色输出，适合 CI 环境
+6. 从 313 个测试增至 333 个，全部通过
 
 项目代码量：
-- 源码：4,475 行（6 个模块）
-- 测试：4,600+ 行（16 个测试文件）
-- 总计：9,000+ 行
+- 源码：4,627 行（7 个模块）
+- 测试：5,008 行（19 个测试文件）
+- 总计：9,635 行
 
 ## 下一步（可选进阶）：
 - 接入 mkdocs/sphinx 生成 API 参考文档站
 - 交互式 TUI 仪表盘（textual/rich-live）
 - 支持跨仓库对比分析
-- CI/CD 集成模式（生成 JUnit XML / SARIF 等格式）
 - 发布到 PyPI
