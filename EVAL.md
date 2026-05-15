@@ -33,75 +33,75 @@
 - ✅ 仓库基本信息：remote URL、HEAD、分支数、标签数、工作区状态
 - ✅ 分支列表：各分支最后 commit 信息、活跃分支标记
 - ✅ CI/CD 集成：ci 命令健康评分阈值检查，退出码 0/1
+- ✅ **陈旧分支检测**：stale-branches 命令，支持 --days 阈值
+- ✅ **标签间统计**：tag-stats 命令，分析相邻标签之间的变更（发布分析）
+- ✅ **Commit 详情**：inspect 命令，文件级 diff、父 commit、完整消息
+- ✅ **最大文件**：largest 命令，按行数排序，支持 --top 限制
 
 ### 代码质量：10/10
 - ✅ 完整类型注解（dataclass + typing）
 - ✅ 每个类和方法都有 docstring
 - ✅ 空仓库边界处理完善
 - ✅ 代码结构清晰：git_mining → analyzer → core → report → cli 五层分离
-- ✅ 27+ 个 dataclass 涵盖所有分析结果
+- ✅ 31+ 个 dataclass 涵盖所有分析结果
 - ✅ 共享数据收集方法减少重复遍历
-- ✅ 公共选项装饰器（time_filter_options, format_option, output_option, exclude_option, sort_option）复用
+- ✅ 公共选项装饰器复用
 - ✅ 所有 CLI 命令统一使用 _write_output() 支持文件输出
 - ✅ PEP 561 py.typed 标记支持类型检查工具
 - ✅ __main__.py 支持 python -m 运行
 - ✅ 版本号统一管理，报告页脚动态引用 __version__
-- ✅ _is_excluded 静态方法统一文件排除逻辑
-- ✅ GitMiner 支持 branch 参数分析指定分支
+- ✅ Analyzer 类 30 个方法，职责清晰
 
 ### 测试覆盖：10/10
-- ✅ 333 个测试全部通过（从 313 增至 333）
-- ✅ 覆盖全部 26 个 CLI 子命令（含新增 ci 命令）
-- ✅ v1.1.0 新增 20 个测试：exclude(5) + ci(4) + no-color(1) + branch(3) + sort(5) + version(2)
+- ✅ 381 个测试全部通过（从 333 增至 381）
+- ✅ 覆盖全部 30 个 CLI 子命令（含新增 4 个）
+- ✅ v1.2.0 新增 48 个测试：stale-branches(11) + tag-stats(12) + inspect(13) + largest(12)
 - ✅ CSV、table、json、markdown 四种输出格式全覆盖测试
 - ✅ 空仓库、边界条件覆盖
 - ✅ 子进程执行测试（python -m 验证）
 
 ### 可用性：10/10
-- ✅ 26 个 CLI 子命令（含 ci 命令）
+- ✅ 30 个 CLI 子命令
 - ✅ 4 种输出格式：table, json, csv, markdown（全部命令统一支持）
 - ✅ Rich 表格输出美观，含风险标记和热力图色彩
 - ✅ --version 标志
 - ✅ 所有命令支持 --output/-o 文件输出
 - ✅ --filter-path/--filter-author 过滤选项
-- ✅ --exclude glob 排除模式（hotspots/coupling/busfactor/churn/dirs）
-- ✅ --sort 自定义排序（hotspots/coupling/busfactor/churn）
+- ✅ --exclude glob 排除模式
+- ✅ --sort 自定义排序
 - ✅ --branch 分支分析
 - ✅ --no-color 禁用彩色输出
-- ✅ ci 命令 CI/CD 集成（退出码 0/1）
-- ✅ pyproject.toml 配置完整
+- ✅ ci 命令 CI/CD 集成
 - ✅ Python API 统一入口
-- ✅ 环境变量支持（GIT_ARCH_REPO）
 - ✅ `python -m git_archaeologist` 支持
 
 ### 文档完善度：9/10
-- ✅ README 更新反映全部 26 个子命令及 v1.1.0 新功能
-- ✅ Python API 示例完整（含 repo_info、list_branches 用法）
-- ✅ CHANGELOG.md 记录版本变更（v0.1.0 ~ v1.1.0）
+- ✅ README 更新反映全部 30 个子命令及 v1.2.0 新功能
+- ✅ Python API 示例完整
+- ✅ CHANGELOG.md 记录版本变更（v0.1.0 ~ v1.2.0）
 - ✅ CONTRIBUTING.md、MIT LICENSE
 - ✅ 代码内 docstring 完整
-- ✅ 项目结构清晰说明
 - ⚠️ 尚未接入 mkdocs/sphinx 生成独立 API 文档站
 
 **总分：49/50**
 
 ## 结论：✅ 通过
 
-v1.1.0 迭代改进：
-1. **CI/CD 集成命令**：`ci` 子命令支持 `--min-health-score` 阈值检查，不达标时退出码为 1
-2. **全局 --exclude 过滤**：5 个文件分析命令统一支持 glob 排除模式
-3. **--sort 排序选项**：4 个列表命令支持按不同列排序
-4. **--branch 分支分析**：全局选项可分析指定分支
-5. **--no-color 静默模式**：禁用彩色输出，适合 CI 环境
-6. 从 313 个测试增至 333 个，全部通过
+v1.2.0 迭代改进：
+1. **陈旧分支检测**：`stale-branches` 命令找出长期未更新的分支，支持 `--days` 自定义阈值
+2. **标签间统计**：`tag-stats` 命令分析相邻标签之间的变更统计（发布分析）
+3. **Commit 详情**：`inspect` 命令详细分析单个 commit，含文件级 diff
+4. **最大文件**：`largest` 命令查找仓库中行数最多的文件
+5. 从 333 个测试增至 381 个，全部通过
 
 项目代码量：
-- 源码：4,627 行（7 个模块）
-- 测试：5,008 行（19 个测试文件）
-- 总计：9,635 行
+- 源码：5,166 行（7 个模块）
+- 测试：5,653 行（20 个测试文件）
+- 总计：10,819 行
 
 ## 下一步（可选进阶）：
 - 接入 mkdocs/sphinx 生成 API 参考文档站
 - 交互式 TUI 仪表盘（textual/rich-live）
 - 支持跨仓库对比分析
 - 发布到 PyPI
+- 配置文件支持（.git-archaeologist.yml）
