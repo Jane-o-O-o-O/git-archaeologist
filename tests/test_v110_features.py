@@ -311,7 +311,7 @@ class TestVersion:
         """版本应为 1.1.0。"""
         import git_archaeologist
 
-        assert git_archaeologist.__version__ == "1.1.0"
+        assert git_archaeologist.__version__ == "1.2.0"
 
     def test_pyproject_version_matches(self):
         """pyproject.toml 版本应与 __version__ 一致。"""
