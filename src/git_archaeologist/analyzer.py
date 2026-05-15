@@ -312,13 +312,22 @@ class BranchEntry:
 class Analyzer:
     """仓库分析器。"""
 
-    def __init__(self, repo_path: str = ".") -> None:
-        self.miner = GitMiner(repo_path)
+    def __init__(self, repo_path: str = ".", branch: str | None = None) -> None:
+        self.miner = GitMiner(repo_path, branch=branch)
+
+    @staticmethod
+    def _is_excluded(path: str, exclude_globs: list[str] | None) -> bool:
+        """检查路径是否匹配排除模式。"""
+        if not exclude_globs:
+            return False
+        import fnmatch
+        return any(fnmatch.fnmatch(path, g) for g in exclude_globs)
 
     def _collect_file_change_sets(
         self,
         since: datetime | None = None,
         until: datetime | None = None,
+        exclude_globs: list[str] | None = None,
     ) -> tuple[
         list[set[str]],
         dict[str, int],
@@ -327,18 +336,21 @@ class Analyzer:
     ]:
         """一次遍历收集所有 commit 的文件变更信息，供多个分析方法复用。
 
+        Args:
+            exclude_globs: 排除的文件 glob 模式列表
+
         Returns:
             (commit_file_sets, file_change_counts, co_change_counts, file_author_changes)
         """
         commit_file_sets: list[set[str]] = []
         file_change_counts: Counter[str] = Counter()
-        # co_change tracking: file -> {other_file: count}
+        # co-change tracking: file -> {other_file: count}
         co_change_counts: dict[str, Counter[str]] = defaultdict(Counter)
         # file -> [(author_name, insertions, deletions)]
         file_author_changes: dict[str, list[tuple[str, int, int]]] = defaultdict(list)
 
         for c in self.miner.iter_commits(since=since, until=until):
-            files = set(c.files_changed)
+            files = set(f for f in c.files_changed if not self._is_excluded(f, exclude_globs))
             commit_file_sets.append(files)
             for f in files:
                 file_change_counts[f] += 1
@@ -433,18 +445,17 @@ class Analyzer:
         until: datetime | None = None,
         top_n: int = 20,
         ignore_globs: list[str] | None = None,
+        exclude_globs: list[str] | None = None,
     ) -> list[HotspotFile]:
         """分析热点文件 — 被修改次数最多的文件。"""
-        import fnmatch
+        all_excludes = list(ignore_globs or []) + list(exclude_globs or [])
 
         files: dict[str, HotspotFile] = {}
 
         for c in self.miner.iter_commits(since=since, until=until):
             for fname in c.files_changed:
                 # 过滤忽略的文件
-                if ignore_globs and any(
-                    fnmatch.fnmatch(fname, g) for g in ignore_globs
-                ):
+                if self._is_excluded(fname, all_excludes):
                     continue
                 if fname not in files:
                     files[fname] = HotspotFile(path=fname)
@@ -493,6 +504,7 @@ class Analyzer:
         until: datetime | None = None,
         top_n: int = 20,
         min_co_change: int = 2,
+        exclude_globs: list[str] | None = None,
     ) -> list[CouplingPair]:
         """文件耦合分析 — 找出经常一起被修改的文件对。
 
@@ -501,8 +513,11 @@ class Analyzer:
             until: 结束时间
             top_n: 返回前 N 对
             min_co_change: 最少共同修改次数
+            exclude_globs: 排除的文件 glob 模式列表
         """
-        _, file_change_counts, co_change_counts, _ = self._collect_file_change_sets(since, until)
+        _, file_change_counts, co_change_counts, _ = self._collect_file_change_sets(
+            since, until, exclude_globs=exclude_globs
+        )
 
         pairs: list[CouplingPair] = []
         seen: set[tuple[str, str]] = set()
@@ -532,14 +547,18 @@ class Analyzer:
         until: datetime | None = None,
         entity: str = "file",
         top_n: int = 20,
+        exclude_globs: list[str] | None = None,
     ) -> list[BusFactorEntry]:
         """Bus Factor 分析 — 评估关键人员依赖度。
 
         Args:
             entity: "file" 或 "dir"（按文件或按目录分析）
             top_n: 返回前 N 个
+            exclude_globs: 排除的文件 glob 模式列表
         """
-        _, _, _, file_author_changes = self._collect_file_change_sets(since, until)
+        _, _, _, file_author_changes = self._collect_file_change_sets(
+            since, until, exclude_globs=exclude_globs
+        )
 
         if entity == "dir":
             # 按目录聚合
@@ -600,6 +619,7 @@ class Analyzer:
         since: datetime | None = None,
         until: datetime | None = None,
         top_n: int = 20,
+        exclude_globs: list[str] | None = None,
     ) -> list[ChurnEntry]:
         """Churn 分析 — 找出变动率最高的文件。
 
@@ -611,15 +631,18 @@ class Analyzer:
         for c, file_changes in self.miner.iter_commits_with_details(since=since, until=until):
             if file_changes:
                 for fc in file_changes:
+                    if self._is_excluded(fc.path, exclude_globs):
+                        continue
                     file_data[fc.path]["ins"] += fc.insertions
                     file_data[fc.path]["del"] += fc.deletions
                     file_data[fc.path]["count"] += 1
             else:
                 # fallback: commit 级别近似
-                n_files = len(c.files_changed) or 1
+                eligible = [f for f in c.files_changed if not self._is_excluded(f, exclude_globs)]
+                n_files = len(eligible) or 1
                 per_file_ins = c.insertions / n_files
                 per_file_del = c.deletions / n_files
-                for f in c.files_changed:
+                for f in eligible:
                     file_data[f]["ins"] += per_file_ins
                     file_data[f]["del"] += per_file_del
                     file_data[f]["count"] += 1
@@ -646,6 +669,7 @@ class Analyzer:
         since: datetime | None = None,
         until: datetime | None = None,
         top_n: int = 20,
+        exclude_globs: list[str] | None = None,
     ) -> list[DirStats]:
         """目录级统计聚合。使用文件级精确 diff 数据。"""
         dirs: dict[str, DirStats] = {}
@@ -658,6 +682,8 @@ class Analyzer:
                 dir_ins: dict[str, int] = defaultdict(int)
                 dir_del: dict[str, int] = defaultdict(int)
                 for fc in file_changes:
+                    if self._is_excluded(fc.path, exclude_globs):
+                        continue
                     d = str(Path(fc.path).parent)
                     if d == ".":
                         d = "(root)"

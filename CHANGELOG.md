@@ -4,6 +4,20 @@
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
+## [1.1.0] - 2026-05-15
+
+### 新增
+- **🤖 CI/CD 集成命令**：`ci` 子命令支持 `--min-health-score` 阈值检查，不达标时退出码为 1
+- **🚫 全局 --exclude 过滤**：`hotspots`、`coupling`、`busfactor`、`churn`、`dirs` 均支持 `--exclude` glob 排除模式
+- **🔀 --sort 排序选项**：`hotspots`（changes/name/insertions/deletions）、`coupling`（strength/count/name）、`busfactor`（risk/changes/name/contributors）、`churn`（ratio/changes/name/insertions）
+- **🌿 --branch 分支分析**：全局 `--branch` 选项，分析指定分支而非默认 HEAD
+- **🔇 --no-color 选项**：全局 `--no-color` 禁用彩色输出，适合 CI 和脚本环境
+
+### 改进
+- Analyzer 类所有文件分析方法统一支持 `exclude_globs` 参数
+- GitMiner 支持 `branch` 参数，可遍历指定分支的 commit 历史
+- 从 313 个测试增至 333 个，全部通过
+
 ## [1.0.0] - 2026-05-15
 
 ### 新增

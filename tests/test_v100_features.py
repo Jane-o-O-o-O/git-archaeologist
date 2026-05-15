@@ -27,7 +27,7 @@ class TestMainModule:
             cwd=os.path.join(os.path.dirname(__file__), ".."),
         )
         assert result.returncode == 0, f"命令失败: {result.stderr}"
-        assert "1.0.0" in result.stdout
+        assert "1.1.0" in result.stdout
 
 
 class TestPyTypedMarker:
@@ -57,7 +57,7 @@ class TestVersionConsistency:
         """版本号应为 1.0.0。"""
         from git_archaeologist import __version__
 
-        assert __version__ == "1.0.0"
+        assert __version__ == "1.1.0"
 
     def test_pyproject_version_matches(self):
         """pyproject.toml 版本号应与 __version__ 一致。"""

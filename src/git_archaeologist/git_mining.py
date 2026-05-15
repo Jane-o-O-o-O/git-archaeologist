@@ -40,9 +40,19 @@ class FileChange:
 class GitMiner:
     """从 Git 仓库中挖掘历史数据。"""
 
-    def __init__(self, repo_path: str = ".") -> None:
+    def __init__(self, repo_path: str = ".", branch: str | None = None) -> None:
         self.repo_path = os.path.abspath(repo_path)
         self.repo = git.Repo(self.repo_path)
+        self._branch = branch
+        # 验证分支存在
+        if branch is not None:
+            found = False
+            for ref in self.repo.refs:
+                if ref.name == branch or ref.name.endswith(f"/{branch}"):
+                    found = True
+                    break
+            if not found:
+                raise ValueError(f"分支不存在: {branch}")
 
     @property
     def is_dirty(self) -> bool:
@@ -79,6 +89,8 @@ class GitMiner:
             return
 
         kwargs: dict = {}
+        if self._branch:
+            kwargs["rev"] = self._branch
         if since:
             kwargs["since"] = since.isoformat()
         if until:
@@ -153,6 +165,8 @@ class GitMiner:
             return
 
         kwargs: dict = {}
+        if self._branch:
+            kwargs["rev"] = self._branch
         if since:
             kwargs["since"] = since.isoformat()
         if until:

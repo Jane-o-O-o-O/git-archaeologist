@@ -22,9 +22,18 @@ def _write_output(content: str, output: str | None) -> None:
     """输出到文件或 stdout。"""
     if output:
         Path(output).write_text(content, encoding="utf-8")
-        console.print(f"[green]✅ 已写入: {output}[/]")
+        if not _is_quiet():
+            console.print(f"[green]✅ 已写入: {output}[/]")
     else:
         click.echo(content)
+
+
+_quiet_mode = False
+
+
+def _is_quiet() -> bool:
+    """是否为安静模式（禁用 Rich 格式化）。"""
+    return _quiet_mode
 
 
 def output_option(f):
@@ -107,15 +116,38 @@ def format_option(f):
     )(f)
 
 
+def exclude_option(f):
+    """为命令添加 --exclude 选项（可多次使用）。"""
+    return click.option("--exclude", multiple=True, help="排除的文件 glob 模式（可多次使用）")(f)
+
+
+def sort_option(choices: list[str], default: str):
+    """为命令添加 --sort 选项的装饰器工厂。"""
+    def decorator(f):
+        return click.option(
+            "--sort",
+            type=click.Choice(choices),
+            default=default,
+            help=f"排序方式: {', '.join(choices)}",
+        )(f)
+    return decorator
+
+
 @click.group()
 @click.version_option(version=__version__, prog_name="git-archaeologist")
 @click.option("--repo", default=".", help="仓库路径", envvar="GIT_ARCH_REPO")
+@click.option("--branch", default=None, help="分析指定分支（默认 HEAD）")
+@click.option("--no-color", is_flag=True, default=False, help="禁用彩色输出")
 @click.pass_context
-def main(ctx: click.Context, repo: str) -> None:
+def main(ctx: click.Context, repo: str, branch: str | None, no_color: bool) -> None:
     """🏺 Git Archaeologist — Git 仓库考古分析工具"""
+    global _quiet_mode, console
+    if no_color:
+        _quiet_mode = True
+        console = Console(no_color=True)
     ctx.ensure_object(dict)
     ctx.obj["repo"] = repo
-    ctx.obj["analyzer"] = Analyzer(repo)
+    ctx.obj["analyzer"] = Analyzer(repo, branch=branch)
 
 
 @main.command()
@@ -258,6 +290,8 @@ def authors(
 @click.option("--until", default=None, help="结束时间")
 @click.option("--top", default=20, help="显示前 N 个热点文件")
 @click.option("--ignore", multiple=True, help="忽略的文件 glob 模式")
+@exclude_option
+@sort_option(["changes", "name", "insertions", "deletions"], "changes")
 @click.option("--format", "fmt", type=click.Choice(["table", "json", "csv", "markdown"]), default="table")
 @output_option
 @click.pass_context
@@ -267,6 +301,8 @@ def hotspots(
     until: str | None,
     top: int,
     ignore: tuple[str, ...],
+    exclude: tuple[str, ...],
+    sort: str,
     fmt: str,
     output: str | None,
 ) -> None:
@@ -277,7 +313,16 @@ def hotspots(
         until=_parse_since(until),
         top_n=top,
         ignore_globs=list(ignore) if ignore else None,
+        exclude_globs=list(exclude) if exclude else None,
     )
+    # 按指定字段排序
+    if sort == "name":
+        result.sort(key=lambda f: f.path)
+    elif sort == "insertions":
+        result.sort(key=lambda f: f.insertions, reverse=True)
+    elif sort == "deletions":
+        result.sort(key=lambda f: f.deletions, reverse=True)
+    # "changes" 已是默认排序
 
     if fmt == "json":
         data = [
@@ -425,6 +470,8 @@ def report(
 @click.option("--until", default=None, help="结束时间")
 @click.option("--top", default=20, help="显示前 N 对")
 @click.option("--min-co-change", default=2, help="最少共同修改次数")
+@exclude_option
+@sort_option(["strength", "count", "name"], "strength")
 @click.option("--format", "fmt", type=click.Choice(["table", "json", "csv", "markdown"]), default="table")
 @output_option
 @click.pass_context
@@ -434,6 +481,8 @@ def coupling(
     until: str | None,
     top: int,
     min_co_change: int,
+    exclude: tuple[str, ...],
+    sort: str,
     fmt: str,
     output: str | None,
 ) -> None:
@@ -444,7 +493,13 @@ def coupling(
         until=_parse_since(until),
         top_n=top,
         min_co_change=min_co_change,
+        exclude_globs=list(exclude) if exclude else None,
     )
+    if sort == "count":
+        result.sort(key=lambda p: p.co_change_count, reverse=True)
+    elif sort == "name":
+        result.sort(key=lambda p: p.file_a)
+    # "strength" 已是默认排序
 
     if fmt == "json":
         data = [
@@ -502,6 +557,8 @@ def coupling(
 @click.option("--until", default=None, help="结束时间")
 @click.option("--entity", type=click.Choice(["file", "dir"]), default="file", help="分析粒度")
 @click.option("--top", default=20, help="显示前 N 个")
+@exclude_option
+@sort_option(["risk", "changes", "name", "contributors"], "risk")
 @click.option("--format", "fmt", type=click.Choice(["table", "json", "csv", "markdown"]), default="table")
 @output_option
 @click.pass_context
@@ -511,6 +568,8 @@ def busfactor(
     until: str | None,
     entity: str,
     top: int,
+    exclude: tuple[str, ...],
+    sort: str,
     fmt: str,
     output: str | None,
 ) -> None:
@@ -521,7 +580,15 @@ def busfactor(
         until=_parse_since(until),
         entity=entity,
         top_n=top,
+        exclude_globs=list(exclude) if exclude else None,
     )
+    if sort == "changes":
+        result.sort(key=lambda e: e.total_changes, reverse=True)
+    elif sort == "name":
+        result.sort(key=lambda e: e.entity)
+    elif sort == "contributors":
+        result.sort(key=lambda e: e.contributor_count)
+    # "risk" 已是默认排序（按 top_contributor_pct 降序）
 
     if fmt == "json":
         data = [
@@ -585,6 +652,8 @@ def busfactor(
 @click.option("--since", default=None, help="起始时间")
 @click.option("--until", default=None, help="结束时间")
 @click.option("--top", default=20, help="显示前 N 个")
+@exclude_option
+@sort_option(["ratio", "changes", "name", "insertions"], "ratio")
 @click.option("--format", "fmt", type=click.Choice(["table", "json", "csv", "markdown"]), default="table")
 @output_option
 @click.pass_context
@@ -593,6 +662,8 @@ def churn(
     since: str | None,
     until: str | None,
     top: int,
+    exclude: tuple[str, ...],
+    sort: str,
     fmt: str,
     output: str | None,
 ) -> None:
@@ -602,7 +673,15 @@ def churn(
         since=_parse_since(since),
         until=_parse_since(until),
         top_n=top,
+        exclude_globs=list(exclude) if exclude else None,
     )
+    if sort == "changes":
+        result.sort(key=lambda e: e.change_count, reverse=True)
+    elif sort == "name":
+        result.sort(key=lambda e: e.path)
+    elif sort == "insertions":
+        result.sort(key=lambda e: e.total_insertions, reverse=True)
+    # "ratio" 已是默认排序
 
     if fmt == "json":
         data = [
@@ -666,6 +745,7 @@ def churn(
 @click.option("--since", default=None, help="起始时间")
 @click.option("--until", default=None, help="结束时间")
 @click.option("--top", default=20, help="显示前 N 个目录")
+@exclude_option
 @click.option("--format", "fmt", type=click.Choice(["table", "json", "csv", "markdown"]), default="table")
 @output_option
 @click.pass_context
@@ -674,6 +754,7 @@ def dirs_cmd(
     since: str | None,
     until: str | None,
     top: int,
+    exclude: tuple[str, ...],
     fmt: str,
     output: str | None,
 ) -> None:
@@ -683,6 +764,7 @@ def dirs_cmd(
         since=_parse_since(since),
         until=_parse_since(until),
         top_n=top,
+        exclude_globs=list(exclude) if exclude else None,
     )
 
     if fmt == "json":
@@ -1172,6 +1254,53 @@ def commit_messages(ctx: click.Context, since: str | None, until: str | None, fm
         for word, count in result.most_common_words[:10]:
             word_table.add_row(word, str(count))
         console.print(word_table)
+
+
+# ── v1.1.0 CI 模式命令 ───────────────────────────────────────────
+
+
+@main.command("ci")
+@click.option("--min-health-score", default=0, type=int, help="最低健康评分阈值（低于则退出码为 1）")
+@click.option("--format", "fmt", type=click.Choice(["table", "json", "csv", "markdown"]), default="table")
+@output_option
+@click.pass_context
+def ci_cmd(ctx: click.Context, min_health_score: int, fmt: str, output: str | None) -> None:
+    """🤖 CI/CD 集成模式 — 检查健康评分，退出码表示通过/失败"""
+    analyzer: Analyzer = ctx.obj["analyzer"]
+    result = analyzer.health_score()
+
+    passed = result.overall >= min_health_score
+
+    if fmt == "json":
+        data = {
+            "overall": result.overall,
+            "bus_factor_score": result.bus_factor_score,
+            "churn_score": result.churn_score,
+            "activity_score": result.activity_score,
+            "diversity_score": result.diversity_score,
+            "summary": result.summary,
+            "min_health_score": min_health_score,
+            "passed": passed,
+        }
+        _write_output(json.dumps(data, ensure_ascii=False, indent=2), output)
+    elif fmt == "csv":
+        headers = ["overall", "min_health_score", "passed"]
+        row = [result.overall, min_health_score, passed]
+        _write_output(_output_csv(headers, [row]), output)
+    elif fmt == "markdown":
+        headers = ["指标", "值"]
+        rows = [
+            ["健康评分", str(result.overall)],
+            ["最低阈值", str(min_health_score)],
+            ["结果", "✅ 通过" if passed else "❌ 失败"],
+        ]
+        _write_output(_output_markdown_table(headers, rows), output)
+    else:
+        status = "[green]✅ 通过[/]" if passed else "[red]❌ 失败[/]"
+        console.print(f"健康评分: [bold]{result.overall}/100[/]  阈值: {min_health_score}  状态: {status}")
+
+    if not passed:
+        raise SystemExit(1)
 
 
 # ── v0.6.0 新增子命令 ────────────────────────────────────────────

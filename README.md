@@ -50,6 +50,13 @@
 - **📊 格式全面统一** — 全部 25 个子命令均支持 `table/json/csv/markdown` 四种格式
 - **📤 `filetypes --output`** — 补齐文件类型命令的文件输出选项
 
+### v1.1.0 新增
+- **🤖 CI/CD 集成** — `ci` 命令检查健康评分阈值，退出码 0/1 表示通过/失败
+- **🚫 文件排除过滤** — 所有文件分析命令支持 `--exclude` glob 模式（可多次使用）
+- **🔀 自定义排序** — `hotspots`/`coupling`/`busfactor`/`churn` 支持 `--sort` 按不同列排序
+- **🌿 分支分析** — 全局 `--branch` 选项分析指定分支
+- **🔇 静默模式** — 全局 `--no-color` 禁用彩色输出，适合 CI 环境
+
 ### 输出
 - **🌐 HTML 报告** — 暗色主题的可浏览完整分析报告
 - **📋 终端表格** — Rich 美化输出
@@ -168,6 +175,32 @@ git-archaeologist branches --format markdown
 git-archaeologist stats --format json -o stats.json
 git-archaeologist authors --format csv -o authors.csv
 git-archaeologist health --format markdown -o health.md
+
+# v1.1.0 新功能
+
+# CI/CD 集成 — 检查健康评分，不达标退出码为 1
+git-archaeologist ci --min-health-score 60
+git-archaeologist ci --min-health-score 50 --format json
+
+# 文件排除过滤（可多次使用 --exclude）
+git-archaeologist hotspots --exclude "*.lock" --exclude "node_modules/*"
+git-archaeologist churn --exclude "*.json" --exclude "*.md"
+git-archaeologist coupling --exclude "docs/*"
+git-archaeologist busfactor --exclude "*.test.*"
+
+# 自定义排序
+git-archaeologist hotspots --sort name       # changes | name | insertions | deletions
+git-archaeologist coupling --sort count      # strength | count | name
+git-archaeologist busfactor --sort changes   # risk | changes | name | contributors
+git-archaeologist churn --sort insertions    # ratio | changes | name | insertions
+
+# 分析指定分支
+git-archaeologist --branch main stats
+git-archaeologist --branch feature-branch authors
+
+# 禁用彩色输出（适合 CI/脚本）
+git-archaeologist --no-color stats
+git-archaeologist --no-color hotspots --format json
 ```
 
 ### Python API
