@@ -12,7 +12,7 @@ import click
 from rich.console import Console
 from rich.table import Table
 
-from git_archaeologist.analyzer import Analyzer
+from git_archaeologist.analyzer import Analyzer, StaleBranch, TagStatsEntry, CommitDetail, LargestFile
 from git_archaeologist import __version__
 
 console = Console()
@@ -2216,3 +2216,295 @@ def branches_cmd(ctx: click.Context, fmt: str, output: str | None) -> None:
     console.print(table)
 
     console.print(f"\n[dim]共 {len(result)} 个分支[/]")
+
+@main.command("stale-branches")
+@click.option("--days", default=30, help="超过此天数视为陈旧（默认 30）")
+@click.option("--format", "fmt", type=click.Choice(["table", "json", "csv", "markdown"]), default="table")
+@output_option
+@click.pass_context
+def stale_branches_cmd(ctx: click.Context, days: int, fmt: str, output: str | None) -> None:
+    """🕰️ 陈旧分支检测 — 找出长期未更新的分支"""
+    analyzer: Analyzer = ctx.obj["analyzer"]
+    result = analyzer.stale_branches(stale_days=days)
+
+    if fmt == "json":
+        data = [
+            {
+                "name": b.name,
+                "sha": b.sha,
+                "last_commit_date": b.last_commit_date.isoformat() if b.last_commit_date else None,
+                "last_commit_author": b.last_commit_author,
+                "last_commit_message": b.last_commit_message,
+                "stale_days": b.stale_days,
+                "is_active": b.is_active,
+            }
+            for b in result
+        ]
+        _write_output(json.dumps(data, ensure_ascii=False, indent=2), output)
+        return
+
+    if fmt == "csv":
+        headers = ["name", "sha", "stale_days", "last_commit_date", "last_commit_author", "is_active"]
+        rows = [[b.name, b.sha, b.stale_days,
+                 b.last_commit_date.strftime("%Y-%m-%d") if b.last_commit_date else "",
+                 b.last_commit_author, b.is_active] for b in result]
+        _write_output(_output_csv(headers, rows), output)
+        return
+
+    if fmt == "markdown":
+        headers = ["#", "分支", "SHA", "陈旧天数", "最后提交", "作者", "当前"]
+        rows = [[str(i), b.name, b.sha, str(b.stale_days),
+                 b.last_commit_date.strftime("%Y-%m-%d") if b.last_commit_date else "-",
+                 b.last_commit_author.split(" <")[0] if b.last_commit_author else "-",
+                 "✓" if b.is_active else ""]
+                for i, b in enumerate(result, 1)]
+        _write_output(_output_markdown_table(headers, rows), output)
+        return
+
+    if not result:
+        console.print(f"[green]✅ 没有超过 {days} 天未更新的分支[/]")
+        return
+
+    table = Table(title=f"🕰️ 陈旧分支（>{days} 天）", show_lines=True)
+    table.add_column("#", style="dim", width=4)
+    table.add_column("分支", style="cyan")
+    table.add_column("SHA", style="dim", width=12)
+    table.add_column("陈旧天数", justify="right", style="bold red")
+    table.add_column("最后提交", justify="right")
+    table.add_column("作者")
+    table.add_column("说明", max_width=50)
+
+    for i, b in enumerate(result, 1):
+        date_str = b.last_commit_date.strftime("%Y-%m-%d") if b.last_commit_date else "-"
+        author = b.last_commit_author.split(" <")[0] if b.last_commit_author else "-"
+        name_str = f"[bold green]→ {b.name}[/]" if b.is_active else b.name
+        stale_style = "bold red" if b.stale_days > 90 else "yellow"
+        table.add_row(
+            str(i), name_str, b.sha,
+            f"[{stale_style}]{b.stale_days}[/{stale_style}]",
+            date_str, author, b.last_commit_message[:50],
+        )
+    console.print(table)
+    console.print(f"\n[dim]共 {len(result)} 个陈旧分支[/]")
+
+
+@main.command("tag-stats")
+@click.option("--format", "fmt", type=click.Choice(["table", "json", "csv", "markdown"]), default="table")
+@output_option
+@click.pass_context
+def tag_stats_cmd(ctx: click.Context, fmt: str, output: str | None) -> None:
+    """📊 标签统计 — 分析相邻标签之间的变更（发布分析）"""
+    analyzer: Analyzer = ctx.obj["analyzer"]
+    result = analyzer.tag_stats()
+
+    if fmt == "json":
+        data = [
+            {
+                "from_tag": e.from_tag,
+                "to_tag": e.to_tag,
+                "from_date": e.from_date.isoformat() if e.from_date else None,
+                "to_date": e.to_date.isoformat() if e.to_date else None,
+                "commits": e.commits,
+                "insertions": e.insertions,
+                "deletions": e.deletions,
+                "files_changed": e.files_changed,
+                "authors": e.authors,
+            }
+            for e in result
+        ]
+        _write_output(json.dumps(data, ensure_ascii=False, indent=2), output)
+        return
+
+    if fmt == "csv":
+        headers = ["from_tag", "to_tag", "commits", "insertions", "deletions", "files_changed", "authors"]
+        rows = [[e.from_tag, e.to_tag, e.commits, e.insertions, e.deletions,
+                 e.files_changed, e.authors] for e in result]
+        _write_output(_output_csv(headers, rows), output)
+        return
+
+    if fmt == "markdown":
+        headers = ["#", "起始标签", "目标标签", "Commits", "新增行", "删除行", "文件数", "作者数"]
+        rows = [[str(i), e.from_tag, e.to_tag, str(e.commits), str(e.insertions),
+                 str(e.deletions), str(e.files_changed), str(e.authors)]
+                for i, e in enumerate(result, 1)]
+        _write_output(_output_markdown_table(headers, rows), output)
+        return
+
+    if not result:
+        console.print("[dim]标签数量不足（需要至少 2 个标签）[/]")
+        return
+
+    table = Table(title="📊 标签间变更统计", show_lines=True)
+    table.add_column("#", style="dim", width=4)
+    table.add_column("起始标签", style="cyan")
+    table.add_column("目标标签", style="cyan")
+    table.add_column("Commits", justify="right", style="bold")
+    table.add_column("新增行", justify="right", style="green")
+    table.add_column("删除行", justify="right", style="red")
+    table.add_column("文件数", justify="right")
+    table.add_column("作者数", justify="right")
+
+    for i, e in enumerate(result, 1):
+        table.add_row(
+            str(i), e.from_tag, e.to_tag,
+            str(e.commits),
+            f"+{_format_number(e.insertions)}",
+            f"-{_format_number(e.deletions)}",
+            str(e.files_changed),
+            str(e.authors),
+        )
+    console.print(table)
+    console.print(f"\n[dim]共 {len(result)} 个版本区间[/]")
+
+
+@main.command("inspect")
+@click.argument("sha")
+@click.option("--format", "fmt", type=click.Choice(["table", "json", "csv", "markdown"]), default="table")
+@output_option
+@click.pass_context
+def inspect_cmd(ctx: click.Context, sha: str, fmt: str, output: str | None) -> None:
+    """🔍 Commit 详情 — 详细分析单个 commit"""
+    analyzer: Analyzer = ctx.obj["analyzer"]
+
+    try:
+        detail = analyzer.commit_detail(sha)
+    except Exception as e:
+        console.print(f"[red]❌ 无法解析 commit: {sha} — {e}[/]")
+        raise SystemExit(1)
+
+    if fmt == "json":
+        data = {
+            "sha": detail.sha,
+            "short_sha": detail.short_sha,
+            "author_name": detail.author_name,
+            "author_email": detail.author_email,
+            "authored_date": detail.authored_date.isoformat() if detail.authored_date else None,
+            "committer_name": detail.committer_name,
+            "committer_email": detail.committer_email,
+            "committed_date": detail.committed_date.isoformat() if detail.committed_date else None,
+            "message": detail.message,
+            "parent_shas": detail.parent_shas,
+            "total_insertions": detail.total_insertions,
+            "total_deletions": detail.total_deletions,
+            "total_files": detail.total_files,
+            "files": [
+                {"path": fc.path, "insertions": fc.insertions, "deletions": fc.deletions, "change_type": fc.change_type}
+                for fc in detail.files_changed
+            ],
+        }
+        _write_output(json.dumps(data, ensure_ascii=False, indent=2), output)
+        return
+
+    if fmt == "csv":
+        headers = ["path", "insertions", "deletions", "change_type"]
+        rows = [[fc.path, fc.insertions, fc.deletions, fc.change_type] for fc in detail.files_changed]
+        _write_output(_output_csv(headers, rows), output)
+        return
+
+    if fmt == "markdown":
+        lines = [
+            f"# Commit {detail.short_sha}",
+            "",
+            f"- **作者**: {detail.author_name} <{detail.author_email}>",
+            f"- **提交时间**: {detail.authored_date.strftime('%Y-%m-%d %H:%M:%S') if detail.authored_date else '-'}",
+            f"- **父 Commit**: {', '.join(p[:12] for p in detail.parent_shas) or '-'}",
+            f"- **文件数**: {detail.total_files}",
+            f"- **变更**: +{detail.total_insertions} / -{detail.total_deletions}",
+            "",
+            "## 消息",
+            "",
+            detail.message,
+            "",
+            "## 文件变更",
+            "",
+        ]
+        headers = ["文件", "新增", "删除", "类型"]
+        rows = [[fc.path, str(fc.insertions), str(fc.deletions), fc.change_type]
+                for fc in detail.files_changed]
+        lines.append(_output_markdown_table(headers, rows))
+        _write_output("\n".join(lines), output)
+        return
+
+    # Table format
+    console.print(f"[bold cyan]Commit:[/] {detail.sha}")
+    console.print(f"[bold cyan]作者:[/] {detail.author_name} <{detail.author_email}>")
+    date_str = detail.authored_date.strftime("%Y-%m-%d %H:%M:%S") if detail.authored_date else "-"
+    console.print(f"[bold cyan]时间:[/] {date_str}")
+    parents = ", ".join(p[:12] for p in detail.parent_shas) or "-"
+    console.print(f"[bold cyan]父 Commit:[/] {parents}")
+    console.print(f"[bold cyan]变更:[/] [green]+{detail.total_insertions}[/] / [red]-{detail.total_deletions}[/] ({detail.total_files} 文件)")
+    console.print(f"\n[bold cyan]消息:[/]")
+    console.print(detail.message)
+    console.print()
+
+    if detail.files_changed:
+        table = Table(title="文件变更", show_lines=True)
+        table.add_column("文件", style="cyan", max_width=60)
+        table.add_column("新增", justify="right", style="green")
+        table.add_column("删除", justify="right", style="red")
+        table.add_column("类型", justify="center")
+
+        for fc in detail.files_changed:
+            table.add_row(fc.path, f"+{fc.insertions}", f"-{fc.deletions}", fc.change_type)
+        console.print(table)
+
+
+@main.command("largest")
+@click.option("--top", default=20, help="显示前 N 个文件")
+@click.option("--format", "fmt", type=click.Choice(["table", "json", "csv", "markdown"]), default="table")
+@output_option
+@click.pass_context
+def largest_cmd(ctx: click.Context, top: int, fmt: str, output: str | None) -> None:
+    """📏 最大文件 — 查找仓库中行数最多的文件"""
+    analyzer: Analyzer = ctx.obj["analyzer"]
+    result = analyzer.largest_files(top_n=top)
+
+    if fmt == "json":
+        data = [
+            {
+                "path": f.path,
+                "lines": f.lines,
+                "size_bytes": f.size_bytes,
+            }
+            for f in result
+        ]
+        _write_output(json.dumps(data, ensure_ascii=False, indent=2), output)
+        return
+
+    if fmt == "csv":
+        headers = ["path", "lines", "size_bytes"]
+        rows = [[f.path, f.lines, f.size_bytes] for f in result]
+        _write_output(_output_csv(headers, rows), output)
+        return
+
+    if fmt == "markdown":
+        headers = ["#", "文件", "行数", "大小"]
+        rows = [[str(i), f.path, str(f.lines), f"{f.size_bytes:,} B"]
+                for i, f in enumerate(result, 1)]
+        _write_output(_output_markdown_table(headers, rows), output)
+        return
+
+    if not result:
+        console.print("[dim]无文件数据[/]")
+        return
+
+    table = Table(title="📏 最大文件（按行数）", show_lines=True)
+    table.add_column("#", style="dim", width=4)
+    table.add_column("文件", style="cyan", max_width=60)
+    table.add_column("行数", justify="right", style="bold yellow")
+    table.add_column("大小", justify="right")
+
+    max_lines = result[0].lines if result else 1
+    for i, f in enumerate(result, 1):
+        # 用颜色标注大小
+        if f.lines > max_lines * 0.8:
+            line_style = "bold red"
+        elif f.lines > max_lines * 0.5:
+            line_style = "yellow"
+        else:
+            line_style = "green"
+        size_str = f"{f.size_bytes:,} B" if f.size_bytes < 1024 else f"{f.size_bytes / 1024:.1f} KB"
+        table.add_row(str(i), f.path, f"[{line_style}]{f.lines:,}[/{line_style}]", size_str)
+    console.print(table)
+    console.print(f"\n[dim]共 {len(result)} 个文件[/]")
+

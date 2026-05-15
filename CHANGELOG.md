@@ -4,6 +4,19 @@
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
+## [1.2.0] - 2026-05-15
+
+### 新增
+- **🕰️ 陈旧分支检测**：`stale-branches` 子命令找出长期未更新的分支，支持 `--days` 自定义阈值
+- **📊 标签间统计**：`tag-stats` 子命令分析相邻标签之间的变更统计（发布分析），含 commits/增删行/文件数/作者数
+- **🔍 Commit 详情**：`inspect` 子命令详细分析单个 commit，含文件级 diff、父 commit、完整消息
+- **📏 最大文件**：`largest` 子命令查找仓库中行数最多的文件，支持 `--top` 限制数量
+
+### 改进
+- Analyzer 类新增 4 个分析方法：`stale_branches`、`tag_stats`、`commit_detail`、`largest_files`
+- 新增 4 个数据类：`StaleBranch`、`TagStatsEntry`、`CommitDetail`、`LargestFile`
+- 从 333 个测试增至 381 个，全部通过
+
 ## [1.1.0] - 2026-05-15
 
 ### 新增

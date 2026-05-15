@@ -309,6 +309,67 @@ class BranchEntry:
     commit_count: int = 0
 
 
+
+@dataclass
+class StaleBranch:
+    """长期未更新的分支信息。"""
+
+    name: str = ""
+    sha: str = ""
+    last_commit_date: datetime | None = None
+    last_commit_author: str = ""
+    last_commit_message: str = ""
+    stale_days: int = 0
+    is_active: bool = False
+
+
+@dataclass
+class TagStatsEntry:
+    """相邻标签之间的变更统计。"""
+
+    from_tag: str = ""
+    to_tag: str = ""
+    from_date: datetime | None = None
+    to_date: datetime | None = None
+    commits: int = 0
+    insertions: int = 0
+    deletions: int = 0
+    files_changed: int = 0
+    authors: int = 0
+    author_list: list[str] = field(default_factory=list)
+
+
+@dataclass
+class CommitDetail:
+    """单个 commit 的详细分析结果。"""
+
+    sha: str = ""
+    short_sha: str = ""
+    author_name: str = ""
+    author_email: str = ""
+    authored_date: datetime | None = None
+    committer_name: str = ""
+    committer_email: str = ""
+    committed_date: datetime | None = None
+    message: str = ""
+    parent_shas: list[str] = field(default_factory=list)
+    files_changed: list[FileChange] = field(default_factory=list)
+    total_insertions: int = 0
+    total_deletions: int = 0
+    total_files: int = 0
+
+
+@dataclass
+class LargestFile:
+    """仓库中最大文件的信息。"""
+
+    path: str = ""
+    lines: int = 0
+    size_bytes: int = 0
+    last_modified: datetime | None = None
+    primary_author: str = ""
+
+
 class Analyzer:
     """仓库分析器。"""
 
@@ -1507,3 +1568,189 @@ class Analyzer:
 
         result.sort(key=lambda b: b.last_commit_date or datetime.min, reverse=True)
         return result
+
+    def stale_branches(
+        self,
+        stale_days: int = 30,
+    ) -> list[StaleBranch]:
+        """检测长期未更新的分支。
+
+        Args:
+            stale_days: 超过此天数视为陈旧（默认 30 天）
+
+        Returns:
+            StaleBranch 列表，按陈旧天数降序
+        """
+        repo = self.miner.repo
+        current_branch = ""
+        try:
+            current_branch = repo.head.ref.name
+        except (TypeError, ValueError):
+            pass
+
+        now = datetime.now()
+        result: list[StaleBranch] = []
+
+        for ref in repo.branches:
+            try:
+                commit = ref.commit
+                last_date = datetime.fromtimestamp(commit.committed_date)
+                days_since = (now - last_date).days
+
+                if days_since >= stale_days:
+                    result.append(StaleBranch(
+                        name=ref.name,
+                        sha=commit.hexsha[:12],
+                        last_commit_date=last_date,
+                        last_commit_author=f"{commit.author.name} <{commit.author.email}>",
+                        last_commit_message=commit.message.strip().split("\n")[0][:80],
+                        stale_days=days_since,
+                        is_active=(ref.name == current_branch),
+                    ))
+            except Exception:
+                continue
+
+        result.sort(key=lambda b: b.stale_days, reverse=True)
+        return result
+
+    def tag_stats(self) -> list[TagStatsEntry]:
+        """分析相邻标签之间的变更统计（发布分析）。
+
+        Returns:
+            TagStatsEntry 列表，按标签时间降序（最新的在前）
+        """
+        tags = self.list_tags()
+        if len(tags) < 2:
+            return []
+
+        # 按 commit 时间排序
+        tags_sorted = sorted(tags, key=lambda t: t.commit_date or datetime.min)
+        results: list[TagStatsEntry] = []
+
+        for i in range(len(tags_sorted) - 1):
+            from_tag = tags_sorted[i]
+            to_tag = tags_sorted[i + 1]
+
+            from_sha = from_tag.commit_sha
+            to_sha = to_tag.commit_sha
+
+            if not from_sha or not to_sha:
+                continue
+
+            # 统计两个标签之间的 commits
+            commits = 0
+            insertions = 0
+            deletions = 0
+            files: set[str] = set()
+            authors: set[str] = set()
+
+            try:
+                for c in self.miner.repo.iter_commits(f"{from_sha}..{to_sha}"):
+                    commits += 1
+                    insertions += c.stats.total.get("insertions", 0)
+                    deletions += c.stats.total.get("deletions", 0)
+                    files.update(c.stats.files.keys())
+                    authors.add(f"{c.author.name} <{c.author.email}>")
+            except Exception:
+                continue
+
+            results.append(TagStatsEntry(
+                from_tag=from_tag.name,
+                to_tag=to_tag.name,
+                from_date=from_tag.commit_date,
+                to_date=to_tag.commit_date,
+                commits=commits,
+                insertions=insertions,
+                deletions=deletions,
+                files_changed=len(files),
+                authors=len(authors),
+                author_list=sorted(authors),
+            ))
+
+        results.sort(key=lambda e: e.to_date or datetime.min, reverse=True)
+        return results
+
+    def commit_detail(self, sha: str) -> CommitDetail:
+        """获取单个 commit 的详细分析。
+
+        Args:
+            sha: commit 的 SHA（完整或缩写）
+
+        Returns:
+            CommitDetail 包含文件级 diff、父 commit、完整消息等
+        """
+        commit = self.miner.repo.commit(sha)
+        file_changes = self.miner.get_file_diff_details(sha)
+
+        parent_shas = [p.hexsha for p in commit.parents]
+
+        total_ins = sum(fc.insertions for fc in file_changes)
+        total_del = sum(fc.deletions for fc in file_changes)
+
+        return CommitDetail(
+            sha=commit.hexsha,
+            short_sha=commit.hexsha[:12],
+            author_name=commit.author.name or "",
+            author_email=commit.author.email or "",
+            authored_date=datetime.fromtimestamp(commit.authored_date),
+            committer_name=commit.committer.name or "",
+            committer_email=commit.committer.email or "",
+            committed_date=datetime.fromtimestamp(commit.committed_date),
+            message=commit.message.strip(),
+            parent_shas=parent_shas,
+            files_changed=file_changes,
+            total_insertions=total_ins,
+            total_deletions=total_del,
+            total_files=len(file_changes),
+        )
+
+    def largest_files(
+        self,
+        top_n: int = 20,
+        rev: str = "HEAD",
+    ) -> list[LargestFile]:
+        """查找仓库中最大的文件（按行数）。
+
+        Args:
+            top_n: 返回前 N 个文件
+            rev: 分析的 revision（默认 HEAD）
+
+        Returns:
+            LargestFile 列表，按行数降序
+        """
+        repo = self.miner.repo
+        results: list[LargestFile] = []
+
+        try:
+            tree = repo.head.commit.tree if rev == "HEAD" else repo.commit(rev).tree
+        except Exception:
+            return []
+
+        def _walk_tree(tree_obj, prefix=""):
+            for blob in tree_obj.blobs:
+                full_path = f"{prefix}{blob.name}" if not prefix else f"{prefix}/{blob.name}"
+                try:
+                    # 只处理文本文件（跳过二进制）
+                    content = blob.data_stream.read()
+                    try:
+                        text = content.decode("utf-8", errors="strict")
+                        line_count = text.count("\n") + 1 if text else 0
+                    except UnicodeDecodeError:
+                        continue
+
+                    results.append(LargestFile(
+                        path=full_path,
+                        lines=line_count,
+                        size_bytes=blob.size,
+                    ))
+                except Exception:
+                    continue
+
+            for subtree in tree_obj.trees:
+                sub_prefix = f"{prefix}/{subtree.name}" if prefix else subtree.name
+                _walk_tree(subtree, sub_prefix)
+
+        _walk_tree(tree)
+        results.sort(key=lambda f: f.lines, reverse=True)
+        return results[:top_n]
+
