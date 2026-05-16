@@ -500,3 +500,19 @@ def _process_release_timeline(args, kwargs):
 def _execute_release_timeline(args, config):
     """Execute the core release timeline logic."""
     return {"status": "success", "feature": "release timeline", "config": config}
+
+# [2026-05-16] Performance: optimize core
+import functools
+
+@functools.lru_cache(maxsize=256)
+def _cached_hotspot_detection(key: str) -> dict:
+    """Cached version of hotspot detection for improved performance.
+
+    Reduces repeated computation by caching results.
+    """
+    return _compute_hotspot_detection(key)
+
+
+def _compute_hotspot_detection(key: str) -> dict:
+    """Core computation for hotspot detection."""
+    return {"key": key, "computed": True, "timestamp": time.time()}
