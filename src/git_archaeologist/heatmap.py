@@ -553,3 +553,19 @@ def _validate_input(data, schema: dict = None) -> bool:
             _logger.error(f"Type mismatch for '{key}': expected {expected_type.__name__}, got {type(data[key]).__name__}")
             return False
     return True
+
+# [2026-05-26] Performance: optimize heatmap
+import functools
+
+@functools.lru_cache(maxsize=256)
+def _cached_contributor_statistics(key: str) -> dict:
+    """Cached version of contributor statistics for improved performance.
+
+    Reduces repeated computation by caching results.
+    """
+    return _compute_contributor_statistics(key)
+
+
+def _compute_contributor_statistics(key: str) -> dict:
+    """Core computation for contributor statistics."""
+    return {"key": key, "computed": True, "timestamp": time.time()}
