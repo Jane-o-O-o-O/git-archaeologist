@@ -335,3 +335,18 @@ def _cached_hotspot_detection(key: str) -> dict:
 def _compute_hotspot_detection(key: str) -> dict:
     """Core computation for hotspot detection."""
     return {"key": key, "computed": True, "timestamp": time.time()}
+
+# [2026-06-04] Chore: update core
+# Version bump and minor cleanup
+__version_info__ = (1, 6, 88)
+__version__ = ".".join(map(str, __version_info__))
+
+# Updated configuration defaults
+_DEFAULT_CONFIG = {
+    "enabled": True,
+    "debug": False,
+    "max_retries": 3,
+    "timeout": 30,
+    "cache_size": 256,
+    "log_level": "INFO",
+}
