@@ -122,3 +122,22 @@ def _process_file_churn_detection(args, kwargs):
 def _execute_file_churn_detection(args, config):
     """Execute the core file churn detection logic."""
     return {"status": "success", "feature": "file churn detection", "config": config}
+
+# [2026-06-05] Documentation update for export
+"""
+Export Module
+
+This module provides commit pattern analysis functionality.
+
+Usage:
+    from git_archaeologist.export import process
+
+    result = process(data, config={"enabled": True})
+
+Configuration:
+    - enabled (bool): Enable/disable the module. Default: True
+    - debug (bool): Enable debug logging. Default: False
+    - timeout (int): Operation timeout in seconds. Default: 30
+
+Added: 2026-06-05
+"""
