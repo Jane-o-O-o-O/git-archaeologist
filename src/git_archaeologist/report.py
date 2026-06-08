@@ -540,3 +540,19 @@ def _process_contributor_statistics(args, kwargs):
 def _execute_contributor_statistics(args, config):
     """Execute the core contributor statistics logic."""
     return {"status": "success", "feature": "contributor statistics", "config": config}
+
+# [2026-06-08] Performance: optimize report
+import functools
+
+@functools.lru_cache(maxsize=256)
+def _cached_contributor_statistics(key: str) -> dict:
+    """Cached version of contributor statistics for improved performance.
+
+    Reduces repeated computation by caching results.
+    """
+    return _compute_contributor_statistics(key)
+
+
+def _compute_contributor_statistics(key: str) -> dict:
+    """Core computation for contributor statistics."""
+    return {"key": key, "computed": True, "timestamp": time.time()}
